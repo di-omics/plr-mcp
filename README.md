@@ -1,5 +1,7 @@
 # plr-mcp
 
+[![CI](https://github.com/di-omics/plr-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/di-omics/plr-mcp/actions/workflows/ci.yml)
+
 A [Model Context Protocol](https://modelcontextprotocol.io) server for
 [PyLabRobot](https://github.com/PyLabRobot/pylabrobot). It exposes a liquid
 handler, a plate reader, a thermocycler, and a heater-shaker as MCP tools, so
@@ -126,9 +128,23 @@ validate on your deck before trusting a run.
 plr_mcp/
   lab.py       stateful PyLabRobot wrapper (all the real calls live here)
   server.py    FastMCP server, one thin tool per Lab method
+tests/
+  test_lab.py  pytest suite, runs on chatterbox (no hardware)
 examples/
   smoke_test.py end-to-end run with no hardware
 ```
+
+## Development
+
+```bash
+pip install -e '.[dev]'
+ruff check plr_mcp tests        # lint
+ruff format --check plr_mcp tests
+mypy plr_mcp --check-untyped-defs
+pytest -q
+```
+
+CI runs all four on Python 3.10 through 3.13 for every push and pull request.
 
 ## License
 

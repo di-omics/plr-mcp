@@ -3,13 +3,14 @@
 Wraps a PyLabRobot LiquidHandler plus a plate reader, a thermocycler, and a
 heater-shaker into one object that survives across tool calls. Defaults to
 PyLabRobot's chatterbox (simulation) backends, so every tool runs end to end
-with no instruments attached. Flip `simulate=False` to swap in the real
-Hamilton STAR backend for liquid handling; instrument hardware backends are
-left as clearly marked extension points because they are vendor specific and
-cannot be exercised without the physical device.
+with no instruments attached. Pass `backend="star"` (or "ot2"/"evo") to swap in
+a real liquid-handling backend; the non-liquid-handling instruments expose real
+hardware backends as clearly marked extension points because they are vendor
+specific and cannot be exercised without the physical device.
 
 Verified against PyLabRobot 0.2.1.
 """
+
 from __future__ import annotations
 
 from typing import Any, List, Optional
@@ -70,12 +71,14 @@ class Lab:
         self._tip_rack_def = tip_rack
         self._plate_def = plate
 
-        self.lh = None
-        self.tips = None
-        self.plate = None
-        self.reader = None
-        self.tc = None
-        self.hs = None
+        # PyLabRobot objects, created lazily. Typed Any because PyLabRobot does
+        # not ship type stubs.
+        self.lh: Any = None
+        self.tips: Any = None
+        self.plate: Any = None
+        self.reader: Any = None
+        self.tc: Any = None
+        self.hs: Any = None
 
     # ------------------------------------------------------------------ deck
 
@@ -142,9 +145,7 @@ class Lab:
         import pylabrobot.resources as resources
 
         if self.backend == "ot2" and not self.host:
-            raise ValueError(
-                "ot2 backend needs a host; pass host=<robot IP> to setup_deck"
-            )
+            raise ValueError("ot2 backend needs a host; pass host=<robot IP> to setup_deck")
 
         # Constructing a vendor backend can fail if its optional extra is not
         # installed (for example pylabrobot[opentrons]). Report that honestly
@@ -223,9 +224,7 @@ class Lab:
                 {
                     "name": child.name,
                     "type": type(child).__name__,
-                    "location": (
-                        {"x": loc.x, "y": loc.y, "z": loc.z} if loc is not None else None
-                    ),
+                    "location": ({"x": loc.x, "y": loc.y, "z": loc.z} if loc is not None else None),
                 }
             )
         return {

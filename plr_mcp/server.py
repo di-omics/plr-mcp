@@ -9,6 +9,7 @@ evo); the default is chatterbox, which runs with no hardware. For ot2 set
 PLR_MCP_OT2_HOST to the robot's IP. A tool call to setup_deck can override the
 backend per session.
 """
+
 from __future__ import annotations
 
 import os
@@ -81,9 +82,7 @@ async def dispense(wells: str, volume: float) -> dict:
 
 
 @mcp.tool()
-async def transfer(
-    source: str, dest: str, volume: float, tips: Optional[str] = None
-) -> dict:
+async def transfer(source: str, dest: str, volume: float, tips: Optional[str] = None) -> dict:
     """Transfer `volume` microliters from `source` wells to `dest` wells in one
     head pass (pick up tips, aspirate, dispense, drop tips). Source and dest
     ranges must have the same well count, at most one column."""
@@ -132,9 +131,7 @@ async def heater_shaker(
     """Control the heater-shaker. `action` is one of: set_temperature (needs
     temperature in Celsius), shake (needs speed in rpm, optional duration in
     seconds), stop, deactivate, status."""
-    return await LAB.heater_shaker(
-        action, temperature=temperature, speed=speed, duration=duration
-    )
+    return await LAB.heater_shaker(action, temperature=temperature, speed=speed, duration=duration)
 
 
 def main() -> None:
