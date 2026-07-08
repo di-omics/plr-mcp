@@ -14,7 +14,7 @@ from plr_mcp.lab import Lab
 
 
 async def main() -> None:
-    lab = Lab(simulate=True)
+    lab = Lab(backend="chatterbox")
 
     print(await lab.setup_deck())
     print(await lab.pick_up_tips("A1:C1"))
