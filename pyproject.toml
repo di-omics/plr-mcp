@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "plr-mcp"
+version = "0.1.0"
+description = "Model Context Protocol server for PyLabRobot: drive liquid handlers, plate readers, thermocyclers, and heater-shakers as MCP tools."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "di", email = "di.hu.58ave@gmail.com" }]
+keywords = ["mcp", "pylabrobot", "lab-automation", "liquid-handling", "hamilton"]
+dependencies = [
+    "mcp>=1.2.0",
+    "pylabrobot>=0.2.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/di-omics/plr-mcp"
+
+[project.scripts]
+plr-mcp = "plr_mcp.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["plr_mcp"]
