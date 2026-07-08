@@ -42,14 +42,15 @@ the run succeeds.
 ## Run the server
 
 ```bash
-plr-mcp            # stdio transport, simulation mode
+plr-mcp                          # stdio transport, chatterbox simulation
+PLR_MCP_BACKEND=star plr-mcp     # target a real Hamilton STAR instead
 ```
 
 ## Tools
 
 | Tool            | What it does |
 |-----------------|--------------|
-| `setup_deck`    | Build the liquid handler on a Hamilton STARLet deck and place a tip rack and a 96-well plate. Call this first. |
+| `setup_deck`    | Build the liquid handler for the chosen backend and, for the Hamilton family, place a tip rack and a 96-well plate. Call this first. |
 | `deck_state`    | List the resources on the deck and the run mode. |
 | `pick_up_tips`  | Pick up tips from the tip rack for a well range (for example `A1:H1`). |
 | `drop_tips`     | Return tips to the rack. |
@@ -88,20 +89,36 @@ Add this to `claude_desktop_config.json`:
 If `plr-mcp` is not on the client's PATH, use the absolute path to the console
 script (`which plr-mcp`) or run it as `python -m plr_mcp.server`.
 
-## Real hardware
+## Backends
 
-Simulation is the default. To target real hardware:
+Pick the liquid-handling backend with `PLR_MCP_BACKEND`, or override it per
+session in a `setup_deck` call (`backend="star"`, etc.).
+
+| Backend      | PyLabRobot backend       | Deck        | Runs with no hardware |
+|--------------|--------------------------|-------------|-----------------------|
+| `chatterbox` | `LiquidHandlerChatterboxBackend` | STARLet | yes (default) |
+| `star`       | `STARBackend` (Hamilton STAR)    | STARLet | no |
+| `ot2`        | `OpentronsOT2Backend` (needs `host`) | OTDeck | no |
+| `evo`        | `EVOBackend` (Tecan Freedom EVO) | EVO150  | no |
+
+Only `chatterbox` runs with no instrument. The other three construct the real
+PyLabRobot backend (correct API for 0.2.1) and attempt to connect; if no
+instrument is reachable, or a vendor extra such as `pylabrobot[opentrons]` is
+not installed, `setup_deck` reports that in `notes` instead of crashing. The
+Hamilton tip and plate auto-load only for `chatterbox` and `star`; `ot2` and
+`evo` use vendor-specific labware, so load your own.
+
+For `ot2`, pass the robot IP:
 
 ```bash
-PLR_MCP_SIMULATE=0 plr-mcp
+PLR_MCP_BACKEND=ot2 PLR_MCP_OT2_HOST=169.254.1.1 plr-mcp
 ```
 
-With that set, `setup_deck` uses PyLabRobot's real Hamilton `STAR` backend. The
-instrument backends (plate reader, thermocycler, heater-shaker) are left as
-clearly marked extension points in `plr_mcp/lab.py`, because they are vendor
-specific and cannot be exercised without the physical device. Wire in your own
-(for example an Inheco ODTC thermocycler or a BioTek reader) at the marked
-`_ensure_*` methods and validate on your deck before trusting a run.
+The non-liquid-handling instruments (plate reader, thermocycler, heater-shaker)
+run on chatterbox simulation and expose real hardware backends as clearly
+marked extension points in `plr_mcp/lab.py` (the `_ensure_*` methods). Wire in
+your own (for example an Inheco ODTC thermocycler or a BioTek reader) and
+validate on your deck before trusting a run.
 
 ## Layout
 

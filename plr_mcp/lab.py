@@ -46,14 +46,26 @@ def _jsonify(obj: Any) -> Any:
 class Lab:
     """Single lab context shared by every MCP tool call."""
 
+    SUPPORTED_BACKENDS = ("chatterbox", "star", "ot2", "evo")
+
     def __init__(
         self,
-        simulate: bool = True,
+        backend: str = "chatterbox",
+        host: Optional[str] = None,
         num_channels: int = 8,
         tip_rack: str = "hamilton_96_tiprack_1000uL_filter",
         plate: str = "Cor_96_wellplate_360ul_Fb",
     ) -> None:
-        self.simulate = simulate
+        backend = backend.lower()
+        if backend not in self.SUPPORTED_BACKENDS:
+            raise ValueError(
+                f"unknown backend {backend!r}; use one of {', '.join(self.SUPPORTED_BACKENDS)}"
+            )
+        self.backend = backend
+        self.host = host
+        # Only the chatterbox backend runs with no hardware. The sim-only
+        # instruments (reader, thermocycler, heater-shaker) key off this.
+        self.simulate = backend == "chatterbox"
         self.num_channels = num_channels
         self._tip_rack_def = tip_rack
         self._plate_def = plate
@@ -71,44 +83,135 @@ class Lab:
         if self.lh is None:
             raise LabNotReady("Deck not set up. Call setup_deck first.")
 
+    def _require_plate(self):
+        if self.plate is None or self.tips is None:
+            raise LabNotReady(
+                "No Hamilton labware loaded for this backend. Tip and plate "
+                "auto-load runs only for the chatterbox and star backends."
+            )
+
     def _broadcast(self, volume: float, n: int) -> List[float]:
         return [float(volume)] * n
 
-    async def setup_deck(self, tip_rail: int = 1, plate_rail: int = 10) -> dict:
-        """Build the liquid handler on a Hamilton STARLet deck and lay out a tip
-        rack and a 96-well plate."""
-        from pylabrobot.liquid_handling import LiquidHandler
-        from pylabrobot.resources import STARLetDeck
+    def _make_lh(self):
+        """Return (liquid_handler_backend, deck, load_hamilton_labware).
+
+        Only the Hamilton family (chatterbox, star) auto-loads the tip rack and
+        plate; the OT-2 and EVO decks use vendor-specific labware, so their
+        layout is left to the caller.
+        """
         import pylabrobot.resources as resources
 
-        if self.simulate:
+        if self.backend == "chatterbox":
             from pylabrobot.liquid_handling.backends import LiquidHandlerChatterboxBackend
 
-            backend = LiquidHandlerChatterboxBackend(num_channels=self.num_channels)
+            return (
+                LiquidHandlerChatterboxBackend(num_channels=self.num_channels),
+                resources.STARLetDeck(),
+                True,
+            )
+        if self.backend == "star":
+            # Real Hamilton STAR. Correct API for 0.2.1; needs the instrument
+            # over USB. Not exercised without hardware.
+            from pylabrobot.liquid_handling.backends import STARBackend
+
+            return STARBackend(), resources.STARLetDeck(), True
+        if self.backend == "ot2":
+            # Real Opentrons OT-2 over the network.
+            from pylabrobot.liquid_handling.backends import OpentronsOT2Backend
+
+            if not self.host:
+                raise ValueError("ot2 backend needs host=<robot IP address>")
+            return OpentronsOT2Backend(host=self.host), resources.OTDeck(), False
+        if self.backend == "evo":
+            # Real Tecan Freedom EVO.
+            from pylabrobot.liquid_handling.backends import EVOBackend
+
+            return EVOBackend(), resources.EVO150Deck(), False
+        raise ValueError(f"unknown backend {self.backend!r}")
+
+    async def setup_deck(self, tip_rail: int = 1, plate_rail: int = 10) -> dict:
+        """Build the liquid handler for the selected backend and, for the
+        Hamilton family, lay out a tip rack and a 96-well plate.
+
+        chatterbox runs with no hardware. star, ot2, and evo construct the real
+        backend and attempt to connect; if no instrument is reachable, the tool
+        reports that instead of crashing.
+        """
+        from pylabrobot.liquid_handling import LiquidHandler
+        import pylabrobot.resources as resources
+
+        if self.backend == "ot2" and not self.host:
+            raise ValueError(
+                "ot2 backend needs a host; pass host=<robot IP> to setup_deck"
+            )
+
+        # Constructing a vendor backend can fail if its optional extra is not
+        # installed (for example pylabrobot[opentrons]). Report that honestly
+        # rather than crashing the tool call.
+        try:
+            lh_backend, deck, load_labware = self._make_lh()
+        except Exception as e:
+            if self.backend == "chatterbox":
+                raise
+            return {
+                "ok": False,
+                "backend": self.backend,
+                "connected": False,
+                "labware": None,
+                "notes": [
+                    f"backend not available in this environment "
+                    f"({type(e).__name__}: {e}). Install the vendor extra "
+                    f"(for example pip install 'pylabrobot[opentrons]') and run "
+                    f"on the host with the instrument attached."
+                ],
+            }
+
+        self.lh = LiquidHandler(backend=lh_backend, deck=deck)
+
+        notes: List[str] = []
+        connected = True
+        try:
+            await self.lh.setup()
+        except Exception as e:
+            # Chatterbox must set up cleanly; a failure there is a real bug.
+            if self.backend == "chatterbox":
+                raise
+            connected = False
+            notes.append(
+                f"backend constructed but hardware not reachable from here "
+                f"({type(e).__name__}: {e}). Run on the host with the instrument attached."
+            )
+
+        labware = None
+        if load_labware:
+            tip_rack_cls = getattr(resources, self._tip_rack_def)
+            plate_cls = getattr(resources, self._plate_def)
+            self.tips = tip_rack_cls(name="tips")
+            self.plate = plate_cls(name="plate")
+            self.lh.deck.assign_child_resource(self.tips, rails=tip_rail)
+            self.lh.deck.assign_child_resource(self.plate, rails=plate_rail)
+            labware = {
+                "tip_rack": {"name": "tips", "type": self._tip_rack_def, "rails": tip_rail},
+                "plate": {"name": "plate", "type": self._plate_def, "rails": plate_rail},
+            }
         else:
-            # Real Hamilton STAR. Needs the instrument attached over USB. Not
-            # exercised by this repo's tests; validate on your own deck first.
-            from pylabrobot.liquid_handling.backends import STAR
+            notes.append(
+                f"{self.backend} uses vendor-specific labware; Hamilton tip and "
+                "plate auto-load was skipped. Load your own labware onto the deck."
+            )
 
-            backend = STAR()
-
-        self.lh = LiquidHandler(backend=backend, deck=STARLetDeck())
-        await self.lh.setup()
-
-        tip_rack_cls = getattr(resources, self._tip_rack_def)
-        plate_cls = getattr(resources, self._plate_def)
-        self.tips = tip_rack_cls(name="tips")
-        self.plate = plate_cls(name="plate")
-        self.lh.deck.assign_child_resource(self.tips, rails=tip_rail)
-        self.lh.deck.assign_child_resource(self.plate, rails=plate_rail)
-
-        return {
+        result = {
             "ok": True,
-            "mode": "simulation" if self.simulate else "hardware",
+            "backend": self.backend,
+            "deck": type(deck).__name__,
+            "connected": connected,
             "num_channels": self.num_channels,
-            "tip_rack": {"name": "tips", "type": self._tip_rack_def, "rails": tip_rail},
-            "plate": {"name": "plate", "type": self._plate_def, "rails": plate_rail},
+            "labware": labware,
         }
+        if notes:
+            result["notes"] = notes
+        return result
 
     def deck_state(self) -> dict:
         """Summarize what is currently on the deck."""
@@ -127,7 +230,7 @@ class Lab:
             )
         return {
             "deck": type(self.lh.deck).__name__,
-            "mode": "simulation" if self.simulate else "hardware",
+            "backend": self.backend,
             "resources": resources,
         }
 
@@ -135,18 +238,21 @@ class Lab:
 
     async def pick_up_tips(self, wells: str) -> dict:
         self._require_lh()
+        self._require_plate()
         spots = self.tips[wells]
         await self.lh.pick_up_tips(spots)
         return {"ok": True, "action": "pick_up_tips", "wells": wells, "channels": len(spots)}
 
     async def drop_tips(self, wells: str) -> dict:
         self._require_lh()
+        self._require_plate()
         spots = self.tips[wells]
         await self.lh.drop_tips(spots)
         return {"ok": True, "action": "drop_tips", "wells": wells, "channels": len(spots)}
 
     async def aspirate(self, wells: str, volume: float) -> dict:
         self._require_lh()
+        self._require_plate()
         targets = self.plate[wells]
         await self.lh.aspirate(targets, vols=self._broadcast(volume, len(targets)))
         return {
@@ -159,6 +265,7 @@ class Lab:
 
     async def dispense(self, wells: str, volume: float) -> dict:
         self._require_lh()
+        self._require_plate()
         targets = self.plate[wells]
         await self.lh.dispense(targets, vols=self._broadcast(volume, len(targets)))
         return {
@@ -178,6 +285,7 @@ class Lab:
         tip, source, and destination counts always line up.
         """
         self._require_lh()
+        self._require_plate()
         src = self.plate[source]
         dst = self.plate[dest]
         if len(src) != len(dst):
