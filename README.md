@@ -62,6 +62,7 @@ PLR_MCP_BACKEND=star plr-mcp     # target a real Hamilton STAR instead
 | `read_plate`    | Read absorbance, fluorescence, or luminescence. |
 | `thermocycler`  | Set block or lid temperature, open or close the lid, deactivate, status. |
 | `heater_shaker` | Set temperature, shake, stop, deactivate, status. |
+| `generate_analysis_pipeline` | Generate the fastq-to-analysis pipeline for FLASH-seq UMI scRNA-seq: a shell pipeline from bcl to a UMI count matrix (bcl2fastq, umi_tools, STAR, samtools, featureCounts), plus a scanpy script from counts to clusters. External tools are not bundled. |
 
 Well ranges use PyLabRobot syntax: a single well `A1`, a column `A1:H1`, or a
 partial column `A1:D1`.
