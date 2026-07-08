@@ -17,6 +17,7 @@ from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
 
+from .analysis import generate_analysis
 from .lab import Lab
 
 mcp = FastMCP("pylabrobot")
@@ -132,6 +133,28 @@ async def heater_shaker(
     temperature in Celsius), shake (needs speed in rpm, optional duration in
     seconds), stop, deactivate, status."""
     return await LAB.heater_shaker(action, temperature=temperature, speed=speed, duration=duration)
+
+
+@mcp.tool()
+async def generate_analysis_pipeline(
+    out_dir: str = "analysis_out",
+    read_length: int = 100,
+    strand: int = 1,
+    leiden_resolution: float = 1.0,
+) -> dict:
+    """Generate the fastq-to-analysis pipeline for FLASH-seq UMI single-cell RNA-seq
+    (protocol section 12). Writes two files into out_dir: flashseq_pipeline.sh (bcl to
+    counts: bcl2fastq, umi_tools extract with the CTAAC spacer and 8 bp UMI, STAR,
+    samtools -F 260, featureCounts, umi_tools count) and flashseq_analysis.py (counts to
+    clusters with scanpy: QC, normalize, HVG, PCA, Leiden, UMAP, marker genes). The
+    external tools (bcl2fastq, umi_tools, STAR, samtools, featureCounts, scanpy) are not
+    bundled; the shell pipeline preflights for them. RESEARCH USE ONLY."""
+    return generate_analysis(
+        out_dir,
+        read_length=read_length,
+        strand=strand,
+        leiden_resolution=leiden_resolution,
+    )
 
 
 def main() -> None:
