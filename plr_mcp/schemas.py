@@ -31,7 +31,13 @@ treat a ``simulated: True`` reading as a measurement.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, TypedDict
+from typing import Any, Dict, List, Optional
+
+# Pydantic (via FastMCP's outputSchema generation) requires
+# typing_extensions.TypedDict, not typing.TypedDict, on Python < 3.12; the
+# stdlib one raises PydanticUserError there. Import it from typing_extensions so
+# the schemas build on every supported Python.
+from typing_extensions import TypedDict
 
 
 class LiquidHandlingResult(TypedDict, total=False):
