@@ -44,6 +44,30 @@ def _jsonify(obj: Any) -> Any:
     return repr(obj)
 
 
+def _plr_version_info() -> dict:
+    """Installed PyLabRobot version and whether it is inside the validated range.
+
+    The zero-motion connect depends on version-specific PyLabRobot internals
+    (that HamiltonLiquidHandler.setup performs no motion), so surface the version
+    and warn outside the range this was checked against.
+    """
+    import pylabrobot
+
+    ver = getattr(pylabrobot, "__version__", "unknown")
+    info: dict = {"pylabrobot_version": ver}
+    try:
+        parts = tuple(int(x) for x in ver.split(".")[:3])
+        if not ((0, 2, 1) <= parts < (0, 3, 0)):
+            info["version_warning"] = (
+                f"PyLabRobot {ver} is outside the validated range >=0.2.1,<0.3; the "
+                f"zero-motion guarantee was checked on 0.2.1. Re-verify a safe connect "
+                f"before trusting hardware."
+            )
+    except Exception:
+        info["version_warning"] = f"could not parse PyLabRobot version {ver!r}."
+    return info
+
+
 class Lab:
     """Single lab context shared by every MCP tool call."""
 
@@ -173,7 +197,14 @@ class Lab:
         the reading thread). We call it directly so we skip STARBackend.setup,
         whose firmware initialization homes the arm. Resolved off the MRO so it
         survives PyLabRobot module reshuffles between versions.
+
+        The base setup() asserts a deck is set, so we set one first if needed.
+        Setting a deck is a software assignment and commands no motion.
         """
+        from pylabrobot.resources import STARLetDeck
+
+        if getattr(backend, "_deck", None) is None:
+            backend.set_deck(STARLetDeck())
         for cls in type(backend).__mro__:
             if cls.__name__ == "HamiltonLiquidHandler":
                 await cls.setup(backend)  # type: ignore[attr-defined]
@@ -244,17 +275,33 @@ class Lab:
         try:
             info = await self._star_connect_and_identify(backend)
         except Exception as e:
+            if isinstance(e, (AssertionError, TypeError, AttributeError)):
+                note = (
+                    f"internal or PyLabRobot-API error during connect "
+                    f"({type(e).__name__}: {e}). This is a code or library-version "
+                    f"issue, not a cable or one-driver problem."
+                )
+            else:
+                note = (
+                    f"could not reach the STAR ({type(e).__name__}: {e}). Check the "
+                    "USB link, that PyLabRobot runs on the machine holding the cable, "
+                    "and that no other PyLabRobot driver is attached."
+                )
             return {
                 "ok": False,
                 "backend": "star",
                 "connected": False,
-                "note": (
-                    f"could not reach the STAR ({type(e).__name__}: {e}). Check the "
-                    "USB link, that PyLabRobot runs on the machine holding the cable, "
-                    "and that no other PyLabRobot driver is attached."
-                ),
+                "note": note,
+                **_plr_version_info(),
             }
-        return {"ok": True, "backend": "star", "connected": True, "motion": "none", **info}
+        return {
+            "ok": True,
+            "backend": "star",
+            "connected": True,
+            "motion": "none",
+            **_plr_version_info(),
+            **info,
+        }
 
     async def setup_deck(
         self,
@@ -321,20 +368,36 @@ class Lab:
         motion = "none"
         self._homed = False
         try:
-            if self.backend == "star" and not home:
-                # Zero-motion connect + identify only. The arm is NOT homed.
-                info = await self._star_connect_and_identify(lh_backend)
-                self._star_reported_initialized = info.get("instrument_initialized")
-                notes.append(
-                    "connected without motion (identify only); the arm is NOT homed. "
-                    "Liquid-handling tools are blocked until you call setup_deck with "
-                    "home=true on a physically clear deck."
-                )
-            else:
-                # chatterbox (harmless), or a real backend with home=True: run the
-                # full setup. On a real STAR this HOMES the channels and iSWAP.
+            if self.backend == "chatterbox":
+                await self.lh.setup()  # harmless in simulation
+                self._homed = True
+            elif not home:
+                # Real backend, home=false: never run the full setup (it homes).
                 if self.backend == "star":
-                    motion = "homes channels and iSWAP"
+                    # Zero-motion connect + identify. The arm is NOT homed.
+                    info = await self._star_connect_and_identify(lh_backend)
+                    self._star_reported_initialized = info.get("instrument_initialized")
+                    notes.append(
+                        "connected without motion (identify only); the arm is NOT "
+                        "homed. Liquid-handling tools are blocked until you call "
+                        "setup_deck with home=true on a physically clear deck."
+                    )
+                else:
+                    # ot2/evo have no zero-motion connect here, and their setup()
+                    # homes. Build the deck only; do not open or initialize.
+                    connected = False
+                    notes.append(
+                        f"{self.backend} built but not initialized. home=false does "
+                        f"not move it and does not connect; call setup_deck(home=true) "
+                        f"to initialize (this homes the instrument)."
+                    )
+            else:
+                # home=true real backend: full setup. This HOMES the instrument.
+                motion = (
+                    "homes channels and iSWAP"
+                    if self.backend == "star"
+                    else "initializes and homes the instrument"
+                )
                 await self.lh.setup()
                 self._homed = True
         except Exception as e:
@@ -342,10 +405,18 @@ class Lab:
             if self.backend == "chatterbox":
                 raise
             connected = False
-            notes.append(
-                f"backend constructed but hardware not reachable from here "
-                f"({type(e).__name__}: {e}). Run on the host with the instrument attached."
-            )
+            if isinstance(e, (AssertionError, TypeError, AttributeError)):
+                notes.append(
+                    f"internal or PyLabRobot-API error during connect "
+                    f"({type(e).__name__}: {e}). This is a code or library-version "
+                    f"issue, not a cable or one-driver problem."
+                )
+            else:
+                notes.append(
+                    f"backend constructed but hardware not reachable from here "
+                    f"({type(e).__name__}: {e}). Run on the host with the instrument "
+                    f"attached."
+                )
 
         labware = None
         if load_labware:

@@ -13,7 +13,9 @@ authors = [{ name = "di", email = "di.hu.58ave@gmail.com" }]
 keywords = ["mcp", "pylabrobot", "lab-automation", "liquid-handling", "hamilton"]
 dependencies = [
     "mcp>=1.2.0",
-    "pylabrobot>=0.2.1",
+    # Upper bound: the zero-motion STAR connect depends on PyLabRobot internals
+    # verified on 0.2.x. Re-validate before widening.
+    "pylabrobot>=0.2.1,<0.3",
 ]
 
 [project.optional-dependencies]

@@ -38,9 +38,10 @@ home. You cannot aspirate on an un-homed instrument through this server.
 
 ### 1. Connect, zero motion
 
-Call `connect_check`. It opens the USB link, reads machine configuration,
-channel count, initialization status, and tip presence, then closes. It does
-NOT move the arm.
+Call `connect_check`. It opens the USB link, reads the channel count,
+initialization status, and per-channel tip presence, then closes. It also
+reports the installed PyLabRobot version so you can confirm it is the one you
+validated. It does NOT move the arm.
 
 Expect `ok: true`, `motion: "none"`, a `num_channels` that matches your
 instrument, and `instrument_initialized` (whether the firmware reports itself
