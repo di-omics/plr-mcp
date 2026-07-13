@@ -64,6 +64,7 @@ PLR_MCP_BACKEND=star plr-mcp     # target a real Hamilton STAR instead
 | `thermocycler`  | Set block or lid temperature, open or close the lid, deactivate, status. |
 | `heater_shaker` | Set temperature, shake, stop, deactivate, status. |
 | `generate_analysis_pipeline` | Generate the fastq-to-analysis pipeline for FLASH-seq UMI scRNA-seq: a shell pipeline from bcl to a UMI count matrix (bcl2fastq, umi_tools, STAR, samtools, featureCounts), plus a scanpy script from counts to clusters. External tools are not bundled. |
+| `run_ampseq_pcr1` | Run a validated targeted PCR PCR1 master-mix protocol by importing and executing the operator's existing starlab script (not a reimplementation). `chatterbox` dry-runs; `star` requires `confirm=true` (human-gated). See below. |
 
 Well ranges use PyLabRobot syntax: a single well `A1`, a column `A1:H1`, or a
 partial column `A1:D1`.
@@ -128,6 +129,22 @@ run on chatterbox simulation and expose real hardware backends as clearly
 marked extension points in `plr_mcp/lab.py` (the `_ensure_*` methods). Wire in
 your own (for example an Inheco ODTC thermocycler or a BioTek reader) and
 validate on your deck before trusting a run.
+
+## Running a validated protocol
+
+`run_ampseq_pcr1` does not reimplement a protocol. It imports an existing,
+hardware-validated starlab script and calls its own functions, so the tuned
+geometry, volumes, and tip logic are exactly the bench values. Point it at the
+scripts:
+
+```bash
+export PLR_MCP_STARLAB_DIR=/path/to/plr-tested/hamilton-star/starlab_live
+```
+
+On a real run, follow the same ladder the scripts require: a clean
+`chatterbox` dry-run, then `mode='deck'` on the instrument (assignment only),
+then the transfer with a person watching. The `star` backend refuses to run
+without `confirm=true`, because a real run homes the arm and moves liquid.
 
 ## Layout
 

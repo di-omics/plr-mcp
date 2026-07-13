@@ -19,6 +19,7 @@ from mcp.server.fastmcp import FastMCP
 
 from .analysis import generate_analysis
 from .lab import Lab
+from .protocols import run_ampseq_pcr1 as _run_ampseq_pcr1
 
 mcp = FastMCP("pylabrobot")
 
@@ -181,6 +182,34 @@ async def generate_analysis_pipeline(
         read_length=read_length,
         strand=strand,
         leiden_resolution=leiden_resolution,
+    )
+
+
+@mcp.tool()
+async def run_ampseq_pcr1(
+    backend: str = "chatterbox",
+    mode: str = "deck",
+    return_tips: bool = False,
+    tip_col: int = 1,
+    confirm: bool = False,
+) -> dict:
+    """Run the operator's validated targeted PCR PCR1 master-mix protocol (starlab
+    script 01). This does NOT reimplement the protocol; it imports the real
+    script and runs its own functions, so the tuned geometry and volumes are the
+    bench values.
+
+    backend: 'chatterbox' dry-runs with no hardware; 'star' drives the real
+    Hamilton STAR and requires confirm=True (human-gated: it homes the arm and
+    moves liquid). mode: 'deck' assigns the deck only; 'pcr1-mm' runs the
+    22.5 uL x8 master-mix transfer. return_tips True is observation only; False
+    discards (production). Set PLR_MCP_STARLAB_DIR to the starlab_live checkout
+    (on starpi, the on-Pi path)."""
+    return await _run_ampseq_pcr1(
+        backend=backend,
+        mode=mode,
+        return_tips=return_tips,
+        tip_col=tip_col,
+        confirm=confirm,
     )
 
 

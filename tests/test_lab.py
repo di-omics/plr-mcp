@@ -6,6 +6,7 @@ dependency.
 """
 
 import asyncio
+import os
 
 import pytest
 
@@ -138,6 +139,52 @@ def test_evo_home_false_does_not_initialize():
     assert res["homed"] is False
     assert res["motion"] == "none"
     assert res["connected"] is False  # built but deliberately not initialized
+
+
+def test_ampseq_pcr1_rejects_bad_args():
+    from plr_mcp.protocols import run_ampseq_pcr1
+
+    for bad in (
+        dict(backend="nope"),
+        dict(mode="nope"),
+        dict(tip_col=0),
+        dict(tip_col=13),
+    ):
+        with pytest.raises(ValueError):
+            run(run_ampseq_pcr1(**bad))
+
+
+def test_ampseq_pcr1_star_is_human_gated():
+    from plr_mcp.protocols import run_ampseq_pcr1
+
+    # Real backend without confirm must refuse and never touch a script or device.
+    res = run(run_ampseq_pcr1(backend="star", mode="pcr1-mm"))
+    assert res["ok"] is False
+    assert "confirm" in res["note"]
+
+
+def test_ampseq_pcr1_missing_script_is_reported():
+    from plr_mcp.protocols import run_ampseq_pcr1
+
+    os.environ["PLR_MCP_STARLAB_DIR"] = "/nonexistent/starlab"
+    try:
+        with pytest.raises(FileNotFoundError):
+            run(run_ampseq_pcr1(backend="chatterbox", mode="deck"))
+    finally:
+        del os.environ["PLR_MCP_STARLAB_DIR"]
+
+
+def test_ampseq_pcr1_dry_run_when_script_present():
+    # Runs the real validated script under chatterbox if it is checked out here;
+    # skips in CI where plr-tested is absent.
+    from plr_mcp.protocols import ampseq_pcr1_script_path, run_ampseq_pcr1
+
+    if not os.path.exists(ampseq_pcr1_script_path()):
+        pytest.skip("starlab ampseq PCR1 script not present in this environment")
+    res = run(run_ampseq_pcr1(backend="chatterbox", mode="pcr1-mm", return_tips=True))
+    assert res["ok"] is True
+    assert res["volume_ul"] == 22.5
+    assert res["executed"] == ["assign_deck", "transfer_pcr1_master_mix"]
 
 
 def test_server_registers_core_tools():
