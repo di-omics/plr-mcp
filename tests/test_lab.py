@@ -119,6 +119,27 @@ def test_setup_deck_can_be_rerun_without_leaking():
     run(lab.pick_up_tips("A1:C1"))  # still usable after the re-setup
 
 
+def test_star_connect_check_gets_past_deck_assert_and_reports_version():
+    # No hardware here, so this returns ok=False. The point is HOW it fails:
+    # it must reach the USB layer (a reach/cable error), NOT the old
+    # 'Deck not set' AssertionError, and it must surface the library version.
+    res = run(Lab(backend="star").connect_check())
+    assert res["ok"] is False
+    assert "pylabrobot_version" in res
+    # the internal-error branch (which the deck bug would have triggered) says
+    # "not a cable"; the fixed path reports a real reach problem instead.
+    assert "not a cable" not in res["note"]
+
+
+def test_evo_home_false_does_not_initialize():
+    # A real backend with home=false must not run setup() (which homes).
+    lab = Lab(backend="evo")
+    res = run(lab.setup_deck(home=False))
+    assert res["homed"] is False
+    assert res["motion"] == "none"
+    assert res["connected"] is False  # built but deliberately not initialized
+
+
 def test_server_registers_core_tools():
     # Subset check, not exact match: the server may carry extra tools added out
     # of band, and those must not break this test.
