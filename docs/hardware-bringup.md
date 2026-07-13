@@ -43,9 +43,15 @@ channel count, initialization status, and tip presence, then closes. It does
 NOT move the arm.
 
 Expect `ok: true`, `motion: "none"`, a `num_channels` that matches your
-instrument, and `instrument_initialized` telling you whether it was already
-homed. If this fails, stop: it is a link, version, or one-driver problem, not
-something to push past.
+instrument, and `instrument_initialized` (whether the firmware reports itself
+initialized). If this fails, stop: it is a link, version, or one-driver problem,
+not something to push past.
+
+**Check `tips_present`.** If any channel reports a tip (left over from an
+aborted run), physically eject those tips from the channels before you home.
+Homing with tips still mounted can drive a tipped channel into labware or the
+deck. Re-run `connect_check` and confirm `tips_present` is all false before
+moving on.
 
 ### 2. Build the deck, still zero motion
 
@@ -68,8 +74,12 @@ response reports `homed: false` and reminds you the arm is not homed.
 
 ### 3. Clear the deck, then home
 
-Physically confirm the deck is clear of anything the channels or iSWAP could hit.
-Then, and only then:
+`home=true` MOVES the arm every time, whether or not `connect_check` reported
+the instrument as initialized. Do not treat a reported-initialized instrument as
+"already homed and safe" -- watch it on every home.
+
+Physically confirm the deck is clear of anything the channels or iSWAP could hit,
+and that no tips are left on the channels (step 1). Then, and only then:
 
 ```
 setup_deck(home=true, tip_rack=..., plate=..., tip_rail=..., plate_rail=...)
@@ -77,8 +87,15 @@ setup_deck(home=true, tip_rack=..., plate=..., tip_rail=..., plate_rail=...)
 
 This runs the full firmware init and homes the channels and iSWAP. Watch the
 instrument. The response reports `homed: true` and
-`motion: "homes channels and iSWAP"`. After this, put your labware back if you
-cleared it, or re-run step 2 values that match the loaded deck.
+`motion: "homes channels and iSWAP"`. The `tip_rack` / `plate` / rail values are
+software geometry describing what you will load; they are assigned after the
+home motion, so homing itself does not touch deck positions.
+
+After the home completes, physically place (or restore) your labware so it
+matches the definitions and rails you passed. You do not need to call
+`setup_deck` again; the session stays connected and homed. If you do re-run it,
+the server first releases the open link so you never end up with two drivers on
+the USB.
 
 ### 4. Full cycle
 

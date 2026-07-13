@@ -102,6 +102,23 @@ def test_connect_check_chatterbox_is_a_stub():
     assert res["simulated"] is True
 
 
+def test_teardown_releases_link_and_resets_homed():
+    lab = Lab(backend="chatterbox")
+    run(lab.setup_deck())
+    assert lab._homed is True and lab.lh is not None
+    run(lab._teardown())
+    assert lab._homed is False and lab.lh is None
+
+
+def test_setup_deck_can_be_rerun_without_leaking():
+    # A second setup_deck must tear the first link down first, not stack a
+    # second driver. Both calls succeed and leave the lab ready.
+    lab = Lab(backend="chatterbox")
+    assert run(lab.setup_deck())["homed"] is True
+    assert run(lab.setup_deck())["homed"] is True
+    run(lab.pick_up_tips("A1:C1"))  # still usable after the re-setup
+
+
 def test_server_registers_core_tools():
     # Subset check, not exact match: the server may carry extra tools added out
     # of band, and those must not break this test.
