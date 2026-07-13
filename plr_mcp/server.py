@@ -31,24 +31,51 @@ LAB = Lab(backend=_backend, host=_host)
 
 
 @mcp.tool()
+async def connect_check() -> dict:
+    """Zero-motion hardware pre-flight. Opens the link to the real instrument,
+    reads its identity (channel count, whether it is already initialized, tip
+    presence), and closes. Does NOT move the arm and does not build a deck. Use
+    this first at the instrument to prove the server can talk to the STAR before
+    anything moves. On the chatterbox backend it returns a simulation stub."""
+    return await LAB.connect_check()
+
+
+@mcp.tool()
 async def setup_deck(
     backend: Optional[str] = None,
     host: Optional[str] = None,
+    home: bool = False,
     tip_rail: int = 1,
     plate_rail: int = 10,
+    tip_rack: Optional[str] = None,
+    plate: Optional[str] = None,
 ) -> dict:
     """Initialize the liquid handler and place labware. Call this before any
     liquid handling tool.
 
     backend: 'chatterbox' (simulation, no hardware), 'star' (Hamilton STAR),
     'ot2' (Opentrons OT-2, needs host), or 'evo' (Tecan Freedom EVO). Defaults
-    to the server's configured backend. For chatterbox and star a 1000 uL tip
-    rack and a Corning 96-well plate are auto-loaded onto a STARLet deck.
+    to the server's configured backend.
+
+    home: physical-motion gate for real hardware. Default False = connect
+    without moving (for star, a zero-motion connect + identify); liquid-handling
+    tools stay blocked until homed. home=True runs the full init that HOMES the
+    channels and iSWAP, so the deck must be physically clear. chatterbox ignores
+    home.
+
+    tip_rail / plate_rail: deck rail positions. tip_rack / plate: PyLabRobot
+    labware definition names, so they match what is physically on the deck.
     host: OT-2 robot IP address (only used when backend='ot2')."""
     global LAB
     if backend is not None or host is not None:
         LAB = Lab(backend=backend or LAB.backend, host=host or LAB.host)
-    return await LAB.setup_deck(tip_rail=tip_rail, plate_rail=plate_rail)
+    return await LAB.setup_deck(
+        tip_rail=tip_rail,
+        plate_rail=plate_rail,
+        home=home,
+        tip_rack=tip_rack,
+        plate=plate,
+    )
 
 
 @mcp.tool()

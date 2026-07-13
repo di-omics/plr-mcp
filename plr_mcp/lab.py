@@ -80,6 +80,11 @@ class Lab:
         self.tc: Any = None
         self.hs: Any = None
 
+        # Real instruments must be homed (a physical motion) before any
+        # liquid-handling move. Chatterbox needs no homing.
+        self._homed: bool = False
+        self._star_reported_initialized: Optional[bool] = None
+
     # ------------------------------------------------------------------ deck
 
     def _require_lh(self):
@@ -91,6 +96,16 @@ class Lab:
             raise LabNotReady(
                 "No Hamilton labware loaded for this backend. Tip and plate "
                 "auto-load runs only for the chatterbox and star backends."
+            )
+
+    def _require_homed(self):
+        # Chatterbox never moves, so it is always considered ready. Real
+        # backends must be homed by an explicit setup_deck(home=True) first.
+        if self.backend != "chatterbox" and not self._homed:
+            raise LabNotReady(
+                "Instrument is connected but NOT homed. Call setup_deck with "
+                "home=true on a physically clear deck before any liquid-handling "
+                "move."
             )
 
     def _broadcast(self, volume: float, n: int) -> List[float]:
@@ -133,16 +148,124 @@ class Lab:
             return EVOBackend(), resources.EVO150Deck(), False
         raise ValueError(f"unknown backend {self.backend!r}")
 
-    async def setup_deck(self, tip_rail: int = 1, plate_rail: int = 10) -> dict:
-        """Build the liquid handler for the selected backend and, for the
-        Hamilton family, lay out a tip rack and a 96-well plate.
+    # -------------------------------------------------- STAR safe bring-up
 
-        chatterbox runs with no hardware. star, ot2, and evo construct the real
-        backend and attempt to connect; if no instrument is reachable, the tool
-        reports that instead of crashing.
+    async def _star_open_no_motion(self, backend: Any) -> None:
+        """Open the STAR USB link and start the response reader, WITHOUT motion.
+
+        PyLabRobot's HamiltonLiquidHandler.setup does exactly this (io.setup +
+        the reading thread). We call it directly so we skip STARBackend.setup,
+        whose firmware initialization homes the arm. Resolved off the MRO so it
+        survives PyLabRobot module reshuffles between versions.
+        """
+        for cls in type(backend).__mro__:
+            if cls.__name__ == "HamiltonLiquidHandler":
+                await cls.setup(backend)  # type: ignore[attr-defined]
+                return
+        # Fallback for other layouts: open just the IO layer.
+        await backend.io.setup()
+
+    async def _star_connect_and_identify(self, backend: Any) -> dict:
+        """Open the link, read identity, and close. Guaranteed zero motion.
+
+        None of the request_* calls command motion; they only query firmware.
+        The link is closed afterward so it does not hold the USB (respecting the
+        one-driver-at-a-time rule).
+        """
+        info: dict = {}
+        opened = False
+        try:
+            await self._star_open_no_motion(backend)
+            opened = True
+            info["instrument_initialized"] = bool(
+                await backend.request_instrument_initialization_status()
+            )
+            tips = await backend.request_tip_presence()
+            info["num_channels"] = len(tips)
+            info["tips_present"] = [bool(t) for t in tips]
+        finally:
+            if opened:
+                try:
+                    await backend.stop()
+                except Exception:
+                    pass
+        return info
+
+    async def connect_check(self) -> dict:
+        """Zero-motion pre-flight: open the link, read identity, close.
+
+        Proves the server can talk to the real STAR without moving the arm.
+        Safe to run any time. Does not build a deck or load labware.
+        """
+        if self.backend == "chatterbox":
+            return {
+                "ok": True,
+                "backend": "chatterbox",
+                "simulated": True,
+                "num_channels": self.num_channels,
+                "instrument_initialized": None,
+                "note": "simulation backend; there is no real instrument to probe.",
+            }
+        if self.backend != "star":
+            return {
+                "ok": False,
+                "backend": self.backend,
+                "note": "connect_check is implemented for the star backend only.",
+            }
+        try:
+            from pylabrobot.liquid_handling.backends import STARBackend
+
+            backend = STARBackend()
+        except Exception as e:
+            return {
+                "ok": False,
+                "backend": "star",
+                "note": f"could not construct STARBackend ({type(e).__name__}: {e}).",
+            }
+        try:
+            info = await self._star_connect_and_identify(backend)
+        except Exception as e:
+            return {
+                "ok": False,
+                "backend": "star",
+                "connected": False,
+                "note": (
+                    f"could not reach the STAR ({type(e).__name__}: {e}). Check the "
+                    "USB link, that PyLabRobot runs on the machine holding the cable, "
+                    "and that no other PyLabRobot driver is attached."
+                ),
+            }
+        return {"ok": True, "backend": "star", "connected": True, "motion": "none", **info}
+
+    async def setup_deck(
+        self,
+        tip_rail: int = 1,
+        plate_rail: int = 10,
+        home: bool = False,
+        tip_rack: Optional[str] = None,
+        plate: Optional[str] = None,
+    ) -> dict:
+        """Build the liquid handler and lay out labware.
+
+        home controls physical motion and matters only for real hardware:
+          home=False (default): construct and connect, but DO NOT home. For star
+            this is a zero-motion connect + identify; liquid-handling tools stay
+            blocked until you home. Safe to run with labware on the deck.
+          home=True: run the full firmware init, which HOMES the channels and
+            iSWAP. The deck must be physically clear. This is the deliberate
+            motion step; only after it do liquid-handling tools unlock.
+        chatterbox ignores home (it never moves) and is always ready.
+
+        tip_rack / plate override the labware definitions so they match what is
+        physically on the deck.
         """
         from pylabrobot.liquid_handling import LiquidHandler
         import pylabrobot.resources as resources
+
+        if tip_rack:
+            self._tip_rack_def = tip_rack
+        if plate:
+            self._plate_def = plate
 
         if self.backend == "ot2" and not self.host:
             raise ValueError("ot2 backend needs a host; pass host=<robot IP> to setup_deck")
@@ -172,8 +295,25 @@ class Lab:
 
         notes: List[str] = []
         connected = True
+        motion = "none"
+        self._homed = False
         try:
-            await self.lh.setup()
+            if self.backend == "star" and not home:
+                # Zero-motion connect + identify only. The arm is NOT homed.
+                info = await self._star_connect_and_identify(lh_backend)
+                self._star_reported_initialized = info.get("instrument_initialized")
+                notes.append(
+                    "connected without motion (identify only); the arm is NOT homed. "
+                    "Liquid-handling tools are blocked until you call setup_deck with "
+                    "home=true on a physically clear deck."
+                )
+            else:
+                # chatterbox (harmless), or a real backend with home=True: run the
+                # full setup. On a real STAR this HOMES the channels and iSWAP.
+                if self.backend == "star":
+                    motion = "homes channels and iSWAP"
+                await self.lh.setup()
+                self._homed = True
         except Exception as e:
             # Chatterbox must set up cleanly; a failure there is a real bug.
             if self.backend == "chatterbox":
@@ -207,9 +347,13 @@ class Lab:
             "backend": self.backend,
             "deck": type(deck).__name__,
             "connected": connected,
+            "homed": self._homed,
+            "motion": motion,
             "num_channels": self.num_channels,
             "labware": labware,
         }
+        if self._star_reported_initialized is not None:
+            result["instrument_reported_initialized"] = self._star_reported_initialized
         if notes:
             result["notes"] = notes
         return result
@@ -238,6 +382,7 @@ class Lab:
     async def pick_up_tips(self, wells: str) -> dict:
         self._require_lh()
         self._require_plate()
+        self._require_homed()
         spots = self.tips[wells]
         await self.lh.pick_up_tips(spots)
         return {"ok": True, "action": "pick_up_tips", "wells": wells, "channels": len(spots)}
@@ -245,6 +390,7 @@ class Lab:
     async def drop_tips(self, wells: str) -> dict:
         self._require_lh()
         self._require_plate()
+        self._require_homed()
         spots = self.tips[wells]
         await self.lh.drop_tips(spots)
         return {"ok": True, "action": "drop_tips", "wells": wells, "channels": len(spots)}
@@ -252,6 +398,7 @@ class Lab:
     async def aspirate(self, wells: str, volume: float) -> dict:
         self._require_lh()
         self._require_plate()
+        self._require_homed()
         targets = self.plate[wells]
         await self.lh.aspirate(targets, vols=self._broadcast(volume, len(targets)))
         return {
@@ -265,6 +412,7 @@ class Lab:
     async def dispense(self, wells: str, volume: float) -> dict:
         self._require_lh()
         self._require_plate()
+        self._require_homed()
         targets = self.plate[wells]
         await self.lh.dispense(targets, vols=self._broadcast(volume, len(targets)))
         return {
@@ -285,6 +433,7 @@ class Lab:
         """
         self._require_lh()
         self._require_plate()
+        self._require_homed()
         src = self.plate[source]
         dst = self.plate[dest]
         if len(src) != len(dst):

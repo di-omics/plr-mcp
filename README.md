@@ -52,7 +52,8 @@ PLR_MCP_BACKEND=star plr-mcp     # target a real Hamilton STAR instead
 
 | Tool            | What it does |
 |-----------------|--------------|
-| `setup_deck`    | Build the liquid handler for the chosen backend and, for the Hamilton family, place a tip rack and a 96-well plate. Call this first. |
+| `connect_check` | Zero-motion hardware pre-flight: open the link to a real instrument, read its identity, close. Does not move the arm. See the [hardware bring-up guide](docs/hardware-bringup.md). |
+| `setup_deck`    | Build the liquid handler for the chosen backend and, for the Hamilton family, place a tip rack and a 96-well plate. Call this first. `home=true` homes a real STAR (motion; deck must be clear). |
 | `deck_state`    | List the resources on the deck and the run mode. |
 | `pick_up_tips`  | Pick up tips from the tip rack for a well range (for example `A1:H1`). |
 | `drop_tips`     | Return tips to the rack. |
@@ -110,6 +111,11 @@ instrument is reachable, or a vendor extra such as `pylabrobot[opentrons]` is
 not installed, `setup_deck` reports that in `notes` instead of crashing. The
 Hamilton tip and plate auto-load only for `chatterbox` and `star`; `ot2` and
 `evo` use vendor-specific labware, so load your own.
+
+**Driving a real STAR moves a physical arm.** `setup_deck(home=true)` homes the
+channels and iSWAP. The `star` backend defaults to a zero-motion connect and
+blocks every liquid-handling tool until you home on a clear deck. Follow the
+[hardware bring-up guide](docs/hardware-bringup.md) for the first run.
 
 For `ot2`, pass the robot IP:
 
