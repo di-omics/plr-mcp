@@ -74,11 +74,12 @@ async def run_ampseq_pcr1(
         return {
             "ok": False,
             "backend": "star",
-            "note": (
+            "simulated": False,
+            "notes": [
                 "real STAR run is human-gated. Re-call with confirm=true, with a "
                 "person watching the deck, after a clean chatterbox dry-run and a "
                 "mode='deck' check. Note lh.setup homes the arm on connect."
-            ),
+            ],
         }
 
     mod = _load_script(AMPSEQ_PCR1_SCRIPT)
@@ -120,6 +121,7 @@ async def run_ampseq_pcr1(
         "protocol": "ampseq_pcr1_mastermix_col1",
         "script": AMPSEQ_PCR1_SCRIPT,
         "backend": backend,
+        "simulated": backend == "chatterbox",
         "mode": mode,
         "volume_ul": getattr(mod, "VOL_PCR1_MASTER_MIX", None),
         "tips": "returned" if return_tips else "discarded",

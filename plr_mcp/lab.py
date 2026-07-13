@@ -251,13 +251,14 @@ class Lab:
                 "simulated": True,
                 "num_channels": self.num_channels,
                 "instrument_initialized": None,
-                "note": "simulation backend; there is no real instrument to probe.",
+                "notes": ["simulation backend; there is no real instrument to probe."],
             }
         if self.backend != "star":
             return {
                 "ok": False,
                 "backend": self.backend,
-                "note": "connect_check is implemented for the star backend only.",
+                "simulated": False,
+                "notes": ["connect_check is implemented for the star backend only."],
             }
         # Release any link a prior setup_deck left open, so this probe never
         # becomes the second driver on the USB.
@@ -270,7 +271,8 @@ class Lab:
             return {
                 "ok": False,
                 "backend": "star",
-                "note": f"could not construct STARBackend ({type(e).__name__}: {e}).",
+                "simulated": False,
+                "notes": [f"could not construct STARBackend ({type(e).__name__}: {e})."],
             }
         try:
             info = await self._star_connect_and_identify(backend)
@@ -290,13 +292,15 @@ class Lab:
             return {
                 "ok": False,
                 "backend": "star",
+                "simulated": False,
                 "connected": False,
-                "note": note,
+                "notes": [note],
                 **_plr_version_info(),
             }
         return {
             "ok": True,
             "backend": "star",
+            "simulated": False,
             "connected": True,
             "motion": "none",
             **_plr_version_info(),
@@ -351,6 +355,7 @@ class Lab:
             return {
                 "ok": False,
                 "backend": self.backend,
+                "simulated": self.simulate,
                 "connected": False,
                 "labware": None,
                 "notes": [
@@ -439,6 +444,7 @@ class Lab:
         result = {
             "ok": True,
             "backend": self.backend,
+            "simulated": self.simulate,
             "deck": type(deck).__name__,
             "connected": connected,
             "homed": self._homed,
@@ -468,6 +474,7 @@ class Lab:
         return {
             "deck": type(self.lh.deck).__name__,
             "backend": self.backend,
+            "simulated": self.simulate,
             "resources": resources,
         }
 
@@ -479,7 +486,13 @@ class Lab:
         self._require_homed()
         spots = self.tips[wells]
         await self.lh.pick_up_tips(spots)
-        return {"ok": True, "action": "pick_up_tips", "wells": wells, "channels": len(spots)}
+        return {
+            "ok": True,
+            "action": "pick_up_tips",
+            "wells": wells,
+            "channels": len(spots),
+            "simulated": self.simulate,
+        }
 
     async def drop_tips(self, wells: str) -> dict:
         self._require_lh()
@@ -487,7 +500,13 @@ class Lab:
         self._require_homed()
         spots = self.tips[wells]
         await self.lh.drop_tips(spots)
-        return {"ok": True, "action": "drop_tips", "wells": wells, "channels": len(spots)}
+        return {
+            "ok": True,
+            "action": "drop_tips",
+            "wells": wells,
+            "channels": len(spots),
+            "simulated": self.simulate,
+        }
 
     async def aspirate(self, wells: str, volume: float) -> dict:
         self._require_lh()
@@ -501,6 +520,7 @@ class Lab:
             "wells": wells,
             "volume_ul": volume,
             "channels": len(targets),
+            "simulated": self.simulate,
         }
 
     async def dispense(self, wells: str, volume: float) -> dict:
@@ -515,6 +535,7 @@ class Lab:
             "wells": wells,
             "volume_ul": volume,
             "channels": len(targets),
+            "simulated": self.simulate,
         }
 
     async def transfer(
@@ -554,6 +575,7 @@ class Lab:
             "dest": dest,
             "volume_ul": volume,
             "channels": n,
+            "simulated": self.simulate,
         }
 
     # ------------------------------------------------------------ plate reader
@@ -608,6 +630,7 @@ class Lab:
         return {
             "ok": True,
             "mode": mode,
+            "simulated": self.simulate,
             "n_reads": len(res) if hasattr(res, "__len__") else None,
             "data": _jsonify(res),
         }
@@ -671,6 +694,7 @@ class Lab:
         return {
             "ok": True,
             "action": action,
+            "simulated": self.simulate,
             "block_temperature_c": _jsonify(await tc.get_block_current_temperature()),
         }
 
@@ -731,5 +755,6 @@ class Lab:
         return {
             "ok": True,
             "action": action,
+            "simulated": self.simulate,
             "temperature_c": await hs.get_temperature(),
         }

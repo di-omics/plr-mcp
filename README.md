@@ -50,32 +50,70 @@ PLR_MCP_BACKEND=star plr-mcp     # target a real Hamilton STAR instead
 
 ## Tools
 
+Every tool is registered under a `plr_` prefix so it stays unambiguous when this
+server is loaded next to others.
+
 | Tool            | What it does |
 |-----------------|--------------|
-| `connect_check` | Zero-motion hardware pre-flight: open the link to a real instrument, read its identity, close. Does not move the arm. See the [hardware bring-up guide](docs/hardware-bringup.md). |
-| `setup_deck`    | Build the liquid handler for the chosen backend and, for the Hamilton family, place a tip rack and a 96-well plate. Call this first. `home=true` homes a real STAR (motion; deck must be clear). |
-| `deck_state`    | List the resources on the deck and the run mode. |
-| `pick_up_tips`  | Pick up tips from the tip rack for a well range (for example `A1:H1`). |
-| `drop_tips`     | Return tips to the rack. |
-| `aspirate`      | Aspirate a volume from each plate well in a range. |
-| `dispense`      | Dispense a volume into each plate well in a range. |
-| `transfer`      | One head pass: pick up, aspirate, dispense, drop. |
-| `read_plate`    | Read absorbance, fluorescence, or luminescence. |
-| `thermocycler`  | Set block or lid temperature, open or close the lid, deactivate, status. |
-| `heater_shaker` | Set temperature, shake, stop, deactivate, status. |
-| `generate_analysis_pipeline` | Generate the fastq-to-analysis pipeline for FLASH-seq UMI scRNA-seq: a shell pipeline from bcl to a UMI count matrix (bcl2fastq, umi_tools, STAR, samtools, featureCounts), plus a scanpy script from counts to clusters. External tools are not bundled. |
-| `run_ampseq_pcr1` | Run a validated targeted PCR PCR1 master-mix protocol by importing and executing the operator's existing starlab script (not a reimplementation). `chatterbox` dry-runs; `star` requires `confirm=true` (human-gated). See below. |
+| `plr_connect_check` | Zero-motion hardware pre-flight: open the link to a real instrument, read its identity, close. Does not move the arm. See the [hardware bring-up guide](docs/hardware-bringup.md). |
+| `plr_setup_deck`    | Build the liquid handler for the chosen backend and, for the Hamilton family, place a tip rack and a 96-well plate. Call this first. `home=true` homes a real STAR (motion; deck must be clear). |
+| `plr_deck_state`    | List the resources on the deck and the run mode. |
+| `plr_pick_up_tips`  | Pick up tips from the tip rack for a well range (for example `A1:H1`). |
+| `plr_drop_tips`     | Return tips to the rack. |
+| `plr_aspirate`      | Aspirate a volume from each plate well in a range. |
+| `plr_dispense`      | Dispense a volume into each plate well in a range. |
+| `plr_transfer`      | One head pass: pick up, aspirate, dispense, drop. |
+| `plr_read_plate`    | Read absorbance, fluorescence, or luminescence. |
+| `plr_thermocycler`  | Set block or lid temperature, open or close the lid, deactivate, status. |
+| `plr_heater_shaker` | Set temperature, shake, stop, deactivate, status. |
+| `plr_generate_analysis_pipeline` | Generate the fastq-to-analysis pipeline for FLASH-seq UMI scRNA-seq: a shell pipeline from bcl to a UMI count matrix (bcl2fastq, umi_tools, STAR, samtools, featureCounts), plus a scanpy script from counts to clusters. External tools are not bundled. |
+| `plr_run_ampseq_pcr1` | Run a validated targeted PCR PCR1 master-mix protocol by importing and executing the operator's existing starlab script (not a reimplementation). `chatterbox` dry-runs; `star` requires `confirm=true` (human-gated). See below. |
 
 Well ranges use PyLabRobot syntax: a single well `A1`, a column `A1:H1`, or a
 partial column `A1:D1`.
+
+### Tool semantics
+
+Beyond names, the tools carry machine-readable metadata so an agent can use them
+safely:
+
+- **Annotations.** Each tool advertises MCP hints (`readOnlyHint`,
+  `destructiveHint`, `idempotentHint`, `openWorldHint`). Probes like
+  `plr_connect_check`, `plr_deck_state`, and `plr_read_plate` are read-only;
+  `plr_setup_deck` (with `home`), the liquid-handling tools, `plr_thermocycler`,
+  `plr_heater_shaker`, and `plr_run_ampseq_pcr1` are marked destructive, so a
+  client can warn before anything moves on real hardware.
+- **`simulated` flag.** Every result includes `simulated`. `true` means the
+  numbers came from a chatterbox backend with no instrument attached; never read
+  a `simulated: true` value as a real measurement.
+- **Structured output.** Tools declare an output schema and return
+  `structuredContent`, so clients parse results against a named shape instead of
+  an opaque object (requires `mcp>=1.9`).
+- **Errors.** Invalid arguments and unmet preconditions (unknown backend, bad
+  well range, moving before `setup_deck`/home) are raised as tool errors.
+  Expected operational states a correct call can still hit (hardware unreachable
+  from this host, missing vendor extra, a human-gated real run awaiting
+  `confirm=true`) come back as a normal result with `ok: false` and a `notes`
+  list to act on.
 
 ## Connect a client
 
 ### Claude Code
 
+This repo ships a project-scoped [`.mcp.json`](.mcp.json), so just open the repo
+in Claude Code and approve the **`plr`** server when prompted (check `/mcp` or
+`claude mcp list`). It starts on the `chatterbox` backend, and Claude Code loads
+[`CLAUDE.md`](CLAUDE.md) for the tool catalog and safety rules. Tools appear
+prefixed `plr_` (for example `plr_aspirate`).
+
+Prefer to register it yourself instead:
+
 ```bash
-claude mcp add plr -- plr-mcp
+claude mcp add --transport stdio plr -- plr-mcp
 ```
+
+Either way, `plr-mcp` must be on PATH (`pip install -e .`); otherwise use the
+absolute path from `which plr-mcp`, or `-- python -m plr_mcp.server`.
 
 ### Claude Desktop
 
@@ -149,13 +187,20 @@ without `confirm=true`, because a real run homes the arm and moves liquid.
 ## Layout
 
 ```
+.mcp.json      Claude Code project-scoped registration (starts on chatterbox)
+CLAUDE.md      guide Claude Code auto-loads (tools + safety rules)
 plr_mcp/
   lab.py       stateful PyLabRobot wrapper (all the real calls live here)
   server.py    FastMCP server, one thin tool per Lab method
+  schemas.py   TypedDict result shapes (the tools' output schemas)
+  protocols.py validated starlab protocol wrappers (run_ampseq_pcr1)
+  analysis.py  FLASH-seq UMI pipeline generator
 tests/
   test_lab.py  pytest suite, runs on chatterbox (no hardware)
 examples/
   smoke_test.py end-to-end run with no hardware
+evals/
+  plr_mcp_eval.xml  agent-usability questions answerable on chatterbox
 ```
 
 ## Development

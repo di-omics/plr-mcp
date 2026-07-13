@@ -12,7 +12,11 @@ license = { text = "MIT" }
 authors = [{ name = "di", email = "di.hu.58ave@gmail.com" }]
 keywords = ["mcp", "pylabrobot", "lab-automation", "liquid-handling", "hamilton"]
 dependencies = [
-    "mcp>=1.2.0",
+    # Lower bound 1.9: structured tool output (outputSchema/structuredContent)
+    # lands there. Upper bound <2: the v2 line replaces mcp.server.fastmcp.FastMCP
+    # with a new API, so an unpinned install would break the import once v2 is the
+    # default on PyPI. Re-validate before widening.
+    "mcp>=1.9.0,<2",
     # Upper bound: the zero-motion STAR connect depends on PyLabRobot internals
     # verified on 0.2.x. Re-validate before widening.
     "pylabrobot>=0.2.1,<0.3",

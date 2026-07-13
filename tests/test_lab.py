@@ -129,7 +129,7 @@ def test_star_connect_check_gets_past_deck_assert_and_reports_version():
     assert "pylabrobot_version" in res
     # the internal-error branch (which the deck bug would have triggered) says
     # "not a cable"; the fixed path reports a real reach problem instead.
-    assert "not a cable" not in res["note"]
+    assert "not a cable" not in " ".join(res["notes"])
 
 
 def test_evo_home_false_does_not_initialize():
@@ -160,7 +160,7 @@ def test_ampseq_pcr1_star_is_human_gated():
     # Real backend without confirm must refuse and never touch a script or device.
     res = run(run_ampseq_pcr1(backend="star", mode="pcr1-mm"))
     assert res["ok"] is False
-    assert "confirm" in res["note"]
+    assert "confirm" in " ".join(res["notes"])
 
 
 def test_ampseq_pcr1_missing_script_is_reported():
@@ -189,21 +189,61 @@ def test_ampseq_pcr1_dry_run_when_script_present():
 
 def test_server_registers_core_tools():
     # Subset check, not exact match: the server may carry extra tools added out
-    # of band, and those must not break this test.
+    # of band, and those must not break this test. Tools are registered under a
+    # plr_ prefix so they stay unambiguous alongside other MCP servers.
     from plr_mcp.server import mcp
 
     tools = run(mcp.list_tools())
     names = {t.name for t in tools}
     assert {
-        "connect_check",
-        "setup_deck",
-        "deck_state",
-        "pick_up_tips",
-        "drop_tips",
-        "aspirate",
-        "dispense",
-        "transfer",
-        "read_plate",
-        "thermocycler",
-        "heater_shaker",
+        "plr_connect_check",
+        "plr_setup_deck",
+        "plr_deck_state",
+        "plr_pick_up_tips",
+        "plr_drop_tips",
+        "plr_aspirate",
+        "plr_dispense",
+        "plr_transfer",
+        "plr_read_plate",
+        "plr_thermocycler",
+        "plr_heater_shaker",
     } <= names
+
+
+def test_results_flag_simulation():
+    # Every result must say whether it is a chatterbox stub or real hardware, so
+    # a simulated reading is never mistaken for a measurement.
+    lab = Lab(backend="chatterbox")
+    run(lab.setup_deck())
+    run(lab.pick_up_tips("A1:C1"))  # aspirate requires tips on the channels
+    assert run(lab.aspirate("A1:C1", 10))["simulated"] is True
+    assert run(lab.read_plate(mode="absorbance", wavelength=600))["simulated"] is True
+    assert run(lab.thermocycler("status"))["simulated"] is True
+    assert run(lab.heater_shaker("status"))["simulated"] is True
+    assert lab.deck_state()["simulated"] is True
+
+
+def test_every_tool_is_prefixed_annotated_and_schematized():
+    # Requires mcp>=1.9 for outputSchema. Each tool must carry MCP annotations
+    # and a structured output schema so clients can reason about it.
+    from plr_mcp.server import mcp
+
+    tools = run(mcp.list_tools())
+    assert tools, "no tools registered"
+    for t in tools:
+        assert t.name.startswith("plr_"), f"{t.name} is not prefixed"
+        assert t.annotations is not None, f"{t.name} has no annotations"
+        assert t.outputSchema is not None, f"{t.name} has no output schema"
+
+
+def test_annotations_separate_probes_from_motion():
+    from plr_mcp.server import mcp
+
+    tools = {t.name: t for t in run(mcp.list_tools())}
+    # Probes: no motion, safe to repeat.
+    assert tools["plr_connect_check"].annotations.readOnlyHint is True
+    assert tools["plr_deck_state"].annotations.readOnlyHint is True
+    # Motion: moves an arm or liquid on real hardware.
+    for name in ("plr_aspirate", "plr_dispense", "plr_transfer", "plr_run_ampseq_pcr1"):
+        assert tools[name].annotations.readOnlyHint is False
+        assert tools[name].annotations.destructiveHint is True

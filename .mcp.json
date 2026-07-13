@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "plr": {
+      "type": "stdio",
+      "command": "plr-mcp",
+      "env": {
+        "PLR_MCP_BACKEND": "chatterbox"
+      }
+    }
+  }
+}
