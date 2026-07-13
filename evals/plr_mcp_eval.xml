@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Agent-usability evaluation for the plr-mcp server.
+
+  Each question is answerable by an MCP client driving this server on the
+  default chatterbox (simulation) backend - no hardware, no external starlab
+  scripts, no network. Answers are deterministic and stable, so they can be
+  checked by string comparison. Questions are independent and non-destructive
+  (chatterbox performs no motion).
+
+  Point your eval harness at the server (`plr-mcp`) and score the agent's answer
+  against <answer> for each pair.
+-->
+<evaluation>
+  <qa_pair>
+    <question>Using the lab-automation MCP server on its default simulation backend, set up the deck and report how many pipetting channels the liquid handler has.</question>
+    <answer>8</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>On the default simulation backend, set up the deck. What is the PyLabRobot definition name of the tip rack that is auto-loaded onto the deck?</question>
+    <answer>hamilton_96_tiprack_1000uL_filter</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>On the default simulation backend, set up the deck. What is the PyLabRobot definition name of the plate that is auto-loaded onto the deck?</question>
+    <answer>Cor_96_wellplate_360ul_Fb</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>On the default simulation backend, set up the deck. What is the class name of the deck that the chatterbox backend builds?</question>
+    <answer>STARLetDeck</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>The transfer tool performs a single head pass. With the default 8-channel head, what is the maximum number of wells one transfer call can move at once?</question>
+    <answer>8</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Run the zero-motion connect check against the default (simulation) server. What is the value of the "simulated" field in its result?</question>
+    <answer>true</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>The plate-reader tool supports three modes. Which mode uses both an excitation wavelength and an emission wavelength?</question>
+    <answer>fluorescence</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>The aspirate tool constrains its volume argument in its input schema. What is the maximum allowed volume, in microliters?</question>
+    <answer>1000</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>On the default simulation backend, set the heater-shaker temperature to 42 degrees Celsius. What value does the tool read back for temperature_c?</question>
+    <answer>42</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Inspect the tool annotations on the deck-state tool. Which boolean annotation hint is set true to signal that the tool makes no changes? Give the hint's field name.</question>
+    <answer>readOnlyHint</answer>
+  </qa_pair>
+</evaluation>
