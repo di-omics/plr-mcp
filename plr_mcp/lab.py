@@ -108,6 +108,22 @@ class Lab:
                 "move."
             )
 
+    async def _teardown(self) -> None:
+        """Release any open instrument link before opening another.
+
+        Building a new backend while the previous one still holds the USB would
+        put two PyLabRobot drivers on one link (garbage responses, unsafe
+        state). Always call this before constructing a fresh connection. Closing
+        a link is motion-free.
+        """
+        if self.lh is not None:
+            try:
+                await self.lh.stop()
+            except Exception:
+                pass
+        self.lh = None
+        self._homed = False
+
     def _broadcast(self, volume: float, n: int) -> List[float]:
         return [float(volume)] * n
 
@@ -212,6 +228,9 @@ class Lab:
                 "backend": self.backend,
                 "note": "connect_check is implemented for the star backend only.",
             }
+        # Release any link a prior setup_deck left open, so this probe never
+        # becomes the second driver on the USB.
+        await self._teardown()
         try:
             from pylabrobot.liquid_handling.backends import STARBackend
 
@@ -269,6 +288,10 @@ class Lab:
 
         if self.backend == "ot2" and not self.host:
             raise ValueError("ot2 backend needs a host; pass host=<robot IP> to setup_deck")
+
+        # Release any link a previous call left open before building a new one,
+        # so we never hold the USB with two drivers.
+        await self._teardown()
 
         # Constructing a vendor backend can fail if its optional extra is not
         # installed (for example pylabrobot[opentrons]). Report that honestly
