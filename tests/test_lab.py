@@ -76,12 +76,41 @@ def test_transfer_over_channel_count_rejected():
         run(lab.transfer("A1:H2", "A1:H2", 10))  # 16 wells > 8 channels
 
 
-def test_server_registers_all_tools():
+def test_chatterbox_is_always_homed_after_setup():
+    lab = Lab(backend="chatterbox")
+    res = run(lab.setup_deck())
+    assert res["homed"] is True
+    assert res["motion"] == "none"
+
+
+def test_require_homed_blocks_unhomed_hardware():
+    # A real backend that is connected but not homed must refuse to move.
+    lab = Lab(backend="star")
+    with pytest.raises(LabNotReady):
+        lab._require_homed()
+    lab._homed = True
+    lab._require_homed()  # once homed, no raise
+
+
+def test_require_homed_never_blocks_chatterbox():
+    Lab(backend="chatterbox")._require_homed()  # must not raise
+
+
+def test_connect_check_chatterbox_is_a_stub():
+    res = run(Lab(backend="chatterbox").connect_check())
+    assert res["ok"] is True
+    assert res["simulated"] is True
+
+
+def test_server_registers_core_tools():
+    # Subset check, not exact match: the server may carry extra tools added out
+    # of band, and those must not break this test.
     from plr_mcp.server import mcp
 
     tools = run(mcp.list_tools())
     names = {t.name for t in tools}
     assert {
+        "connect_check",
         "setup_deck",
         "deck_state",
         "pick_up_tips",
@@ -92,4 +121,4 @@ def test_server_registers_all_tools():
         "read_plate",
         "thermocycler",
         "heater_shaker",
-    } == names
+    } <= names
