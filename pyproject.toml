@@ -20,6 +20,10 @@ dependencies = [
     # Upper bound: the zero-motion STAR connect depends on PyLabRobot internals
     # verified on 0.2.x. Re-validate before widening.
     "pylabrobot>=0.2.1,<0.3",
+    # schemas.py needs typing_extensions.TypedDict for Pydantic on Python < 3.12
+    # (typing.TypedDict raises PydanticUserError there). Ships with pydantic, but
+    # declared so the requirement is explicit.
+    "typing-extensions>=4.0",
 ]
 
 [project.optional-dependencies]
