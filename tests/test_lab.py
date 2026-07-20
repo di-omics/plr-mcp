@@ -7,8 +7,11 @@ dependency.
 
 import asyncio
 import os
+import sys
 
 import pytest
+from mcp import ClientSession
+from mcp.client.stdio import StdioServerParameters, stdio_client
 
 from plr_mcp.lab import Lab, LabNotReady
 
@@ -208,6 +211,29 @@ def test_server_registers_core_tools():
         "plr_thermocycler",
         "plr_heater_shaker",
     } <= names
+
+
+def test_server_stdio_contract_runs_through_a_real_mcp_client():
+    """Exercise the shipped stdio transport, not only the in-process FastMCP object."""
+
+    async def go():
+        params = StdioServerParameters(
+            command=sys.executable,
+            args=["-m", "plr_mcp.server"],
+            env={**os.environ, "PLR_MCP_BACKEND": "chatterbox"},
+        )
+        async with stdio_client(params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                tools = await session.list_tools()
+                result = await session.call_tool("plr_setup_deck", {})
+
+        assert "plr_setup_deck" in {tool.name for tool in tools.tools}
+        assert result.isError is False
+        assert result.structuredContent["simulated"] is True
+        assert result.structuredContent["homed"] is True
+
+    run(go())
 
 
 def test_results_flag_simulation():
