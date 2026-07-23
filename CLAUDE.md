@@ -16,7 +16,7 @@ read the safety rules before doing anything on a non-`chatterbox` backend.
    `star`/`ot2`/`evo`, liquid-handling tools stay blocked until
    `plr_setup_deck(home=true)` runs on a **physically clear deck**. Homing moves
    the arm; a human must confirm the deck is clear first.
-4. **Real protocol runs are human-gated.** `plr_run_ampseq_pcr1` on `star`
+4. **Real protocol runs are human-gated.** `plr_run_targeted_pcr_round1` on `star`
    refuses to run without `confirm=true`. Do not set `confirm=true` yourself —
    ask the operator to, with a person watching the deck.
 5. **One driver on the USB at a time.** The server tears down a link before
@@ -47,7 +47,7 @@ Motion — destructive on real hardware:
 - `plr_pick_up_tips`, `plr_drop_tips`, `plr_aspirate`, `plr_dispense`,
   `plr_transfer` — liquid handling (well ranges like `A1`, `A1:H1`, `A1:D1`).
 - `plr_thermocycler`, `plr_heater_shaker` — block/lid and temp/shake control.
-- `plr_run_ampseq_pcr1` — runs the operator's **validated** starlab PCR1 script
+- `plr_run_targeted_pcr_round1` — runs the operator's **validated** starlab PCR1 script
   (not a reimplementation); `star` needs `confirm=true`.
 
 Codegen — writes files, no hardware:

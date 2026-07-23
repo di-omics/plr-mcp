@@ -18,15 +18,15 @@ from typing import Any
 # Default location of the validated scripts; override with PLR_MCP_STARLAB_DIR.
 _DEFAULT_STARLAB_DIR = os.path.expanduser("~/Downloads/plr-tested/hamilton-star/starlab_live")
 
-AMPSEQ_PCR1_SCRIPT = "01_ampseq_pcr1_mastermix_col1.py"
+TARGETED_PCR_ROUND1_SCRIPT = "01_targeted_pcr_round1_mastermix_col1.py"
 
 
 def starlab_dir() -> str:
     return os.environ.get("PLR_MCP_STARLAB_DIR", _DEFAULT_STARLAB_DIR)
 
 
-def ampseq_pcr1_script_path() -> str:
-    return os.path.join(starlab_dir(), AMPSEQ_PCR1_SCRIPT)
+def targeted_pcr_round1_script_path() -> str:
+    return os.path.join(starlab_dir(), TARGETED_PCR_ROUND1_SCRIPT)
 
 
 def _load_script(filename: str) -> Any:
@@ -36,7 +36,7 @@ def _load_script(filename: str) -> Any:
             f"validated script not found at {path}. Set PLR_MCP_STARLAB_DIR to your "
             "plr-tested starlab_live directory (on starpi, the on-Pi checkout)."
         )
-    spec = importlib.util.spec_from_file_location("starlab_ampseq_pcr1", path)
+    spec = importlib.util.spec_from_file_location("starlab_targeted_pcr_round1", path)
     if spec is None or spec.loader is None:
         raise ImportError(f"could not load a module spec for {path}")
     mod = importlib.util.module_from_spec(spec)
@@ -44,14 +44,14 @@ def _load_script(filename: str) -> Any:
     return mod
 
 
-async def run_ampseq_pcr1(
+async def run_targeted_pcr_round1(
     backend: str = "chatterbox",
     mode: str = "deck",
     return_tips: bool = False,
     tip_col: int = 1,
     confirm: bool = False,
 ) -> dict:
-    """Run the validated targeted PCR PCR1 master-mix script (starlab script 01).
+    """Run the validated targeted PCR round 1 master-mix script (starlab script 01).
 
     Imports the real script and calls its assign_deck / transfer_pcr1_master_mix
     functions unchanged, so the tuned geometry and volumes are exactly the bench
@@ -82,7 +82,7 @@ async def run_ampseq_pcr1(
             ],
         }
 
-    mod = _load_script(AMPSEQ_PCR1_SCRIPT)
+    mod = _load_script(TARGETED_PCR_ROUND1_SCRIPT)
 
     from pylabrobot.liquid_handling import LiquidHandler
     from pylabrobot.resources.hamilton import STARDeck
@@ -118,8 +118,8 @@ async def run_ampseq_pcr1(
 
     return {
         "ok": True,
-        "protocol": "ampseq_pcr1_mastermix_col1",
-        "script": AMPSEQ_PCR1_SCRIPT,
+        "protocol": "targeted_pcr_round1_mastermix_col1",
+        "script": TARGETED_PCR_ROUND1_SCRIPT,
         "backend": backend,
         "simulated": backend == "chatterbox",
         "mode": mode,

@@ -160,8 +160,8 @@ class AnalysisPipelineResult(TypedDict, total=False):
     note: Optional[str]
 
 
-class AmpseqPcr1Result(TypedDict, total=False):
-    """run_ampseq_pcr1: validated starlab PCR1 master-mix run."""
+class TargetedPcrRound1Result(TypedDict, total=False):
+    """run_targeted_pcr_round1: validated starlab PCR1 master-mix run."""
 
     ok: Optional[bool]
     protocol: Optional[str]

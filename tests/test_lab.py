@@ -144,8 +144,8 @@ def test_evo_home_false_does_not_initialize():
     assert res["connected"] is False  # built but deliberately not initialized
 
 
-def test_ampseq_pcr1_rejects_bad_args():
-    from plr_mcp.protocols import run_ampseq_pcr1
+def test_targeted_pcr_round1_rejects_bad_args():
+    from plr_mcp.protocols import run_targeted_pcr_round1
 
     for bad in (
         dict(backend="nope"),
@@ -154,37 +154,37 @@ def test_ampseq_pcr1_rejects_bad_args():
         dict(tip_col=13),
     ):
         with pytest.raises(ValueError):
-            run(run_ampseq_pcr1(**bad))
+            run(run_targeted_pcr_round1(**bad))
 
 
-def test_ampseq_pcr1_star_is_human_gated():
-    from plr_mcp.protocols import run_ampseq_pcr1
+def test_targeted_pcr_round1_star_is_human_gated():
+    from plr_mcp.protocols import run_targeted_pcr_round1
 
     # Real backend without confirm must refuse and never touch a script or device.
-    res = run(run_ampseq_pcr1(backend="star", mode="pcr1-mm"))
+    res = run(run_targeted_pcr_round1(backend="star", mode="pcr1-mm"))
     assert res["ok"] is False
     assert "confirm" in " ".join(res["notes"])
 
 
-def test_ampseq_pcr1_missing_script_is_reported():
-    from plr_mcp.protocols import run_ampseq_pcr1
+def test_targeted_pcr_round1_missing_script_is_reported():
+    from plr_mcp.protocols import run_targeted_pcr_round1
 
     os.environ["PLR_MCP_STARLAB_DIR"] = "/nonexistent/starlab"
     try:
         with pytest.raises(FileNotFoundError):
-            run(run_ampseq_pcr1(backend="chatterbox", mode="deck"))
+            run(run_targeted_pcr_round1(backend="chatterbox", mode="deck"))
     finally:
         del os.environ["PLR_MCP_STARLAB_DIR"]
 
 
-def test_ampseq_pcr1_dry_run_when_script_present():
+def test_targeted_pcr_round1_dry_run_when_script_present():
     # Runs the real validated script under chatterbox if it is checked out here;
     # skips in CI where plr-tested is absent.
-    from plr_mcp.protocols import ampseq_pcr1_script_path, run_ampseq_pcr1
+    from plr_mcp.protocols import targeted_pcr_round1_script_path, run_targeted_pcr_round1
 
-    if not os.path.exists(ampseq_pcr1_script_path()):
-        pytest.skip("starlab ampseq PCR1 script not present in this environment")
-    res = run(run_ampseq_pcr1(backend="chatterbox", mode="pcr1-mm", return_tips=True))
+    if not os.path.exists(targeted_pcr_round1_script_path()):
+        pytest.skip("starlab targeted PCR round 1 script not present in this environment")
+    res = run(run_targeted_pcr_round1(backend="chatterbox", mode="pcr1-mm", return_tips=True))
     assert res["ok"] is True
     assert res["volume_ul"] == 22.5
     assert res["executed"] == ["assign_deck", "transfer_pcr1_master_mix"]
@@ -270,6 +270,6 @@ def test_annotations_separate_probes_from_motion():
     assert tools["plr_connect_check"].annotations.readOnlyHint is True
     assert tools["plr_deck_state"].annotations.readOnlyHint is True
     # Motion: moves an arm or liquid on real hardware.
-    for name in ("plr_aspirate", "plr_dispense", "plr_transfer", "plr_run_ampseq_pcr1"):
+    for name in ("plr_aspirate", "plr_dispense", "plr_transfer", "plr_run_targeted_pcr_round1"):
         assert tools[name].annotations.readOnlyHint is False
         assert tools[name].annotations.destructiveHint is True

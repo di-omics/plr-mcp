@@ -16,7 +16,7 @@ others. The Python function keeps the short name.
 Tool annotations: each tool carries MCP hints (readOnlyHint / destructiveHint /
 idempotentHint / openWorldHint) so a client can tell a probe (connect_check,
 deck_state, read_plate) apart from a tool that moves a physical arm or liquid
-(setup_deck with home, the liquid-handling tools, run_ampseq_pcr1). Treat every
+(setup_deck with home, the liquid-handling tools, run_targeted_pcr_round1). Treat every
 `destructiveHint=True` tool as capable of real motion on non-chatterbox backends.
 
 Error convention (uniform across tools):
@@ -44,7 +44,7 @@ from pydantic import Field
 from . import schemas
 from .analysis import generate_analysis
 from .lab import Lab
-from .protocols import run_ampseq_pcr1 as _run_ampseq_pcr1
+from .protocols import run_targeted_pcr_round1 as _run_targeted_pcr_round1
 
 mcp = FastMCP("pylabrobot")
 
@@ -456,16 +456,16 @@ async def generate_analysis_pipeline(
 
 
 @mcp.tool(
-    name="plr_run_ampseq_pcr1",
+    name="plr_run_targeted_pcr_round1",
     annotations=ToolAnnotations(
-        title="Run ampseq PCR1 (validated)",
+        title="Run targeted PCR round 1 (validated)",
         readOnlyHint=False,
         destructiveHint=True,
         idempotentHint=False,
         openWorldHint=True,
     ),
 )
-async def run_ampseq_pcr1(
+async def run_targeted_pcr_round1(
     backend: Annotated[
         Literal["chatterbox", "star"],
         Field(description="chatterbox dry-runs with no hardware; star drives the real STAR."),
@@ -486,8 +486,8 @@ async def run_ampseq_pcr1(
             "liquid (human-gated)."
         ),
     ] = False,
-) -> schemas.AmpseqPcr1Result:
-    """Run the operator's validated targeted PCR PCR1 master-mix protocol (starlab
+) -> schemas.TargetedPcrRound1Result:
+    """Run the operator's validated targeted PCR round 1 master-mix protocol (starlab
     script 01). This does NOT reimplement the protocol; it imports the real
     script and runs its own functions, so the tuned geometry and volumes are the
     bench values.
@@ -499,8 +499,8 @@ async def run_ampseq_pcr1(
     discards (production). Set PLR_MCP_STARLAB_DIR to the starlab_live checkout
     (on starpi, the on-Pi path)."""
     return cast(
-        schemas.AmpseqPcr1Result,
-        await _run_ampseq_pcr1(
+        schemas.TargetedPcrRound1Result,
+        await _run_targeted_pcr_round1(
             backend=backend,
             mode=mode,
             return_tips=return_tips,
