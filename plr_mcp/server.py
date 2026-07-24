@@ -16,7 +16,7 @@ others. The Python function keeps the short name.
 Tool annotations: each tool carries MCP hints (readOnlyHint / destructiveHint /
 idempotentHint / openWorldHint) so a client can tell a probe (connect_check,
 deck_state, read_plate) apart from a tool that moves a physical arm or liquid
-(setup_deck with home, the liquid-handling tools, run_targeted_pcr_round1). Treat every
+(setup_deck with home, the liquid-handling tools, run_pcr_enrichment_round1). Treat every
 `destructiveHint=True` tool as capable of real motion on non-chatterbox backends.
 
 Error convention (uniform across tools):
@@ -44,7 +44,7 @@ from pydantic import Field
 from . import schemas
 from .analysis import generate_analysis
 from .lab import Lab
-from .protocols import run_targeted_pcr_round1 as _run_targeted_pcr_round1
+from .protocols import run_pcr_enrichment_round1 as _run_pcr_enrichment_round1
 
 mcp = FastMCP("pylabrobot")
 
@@ -428,51 +428,55 @@ async def generate_analysis_pipeline(
         str, Field(description="Directory to write the two scripts into (created if missing).")
     ] = "analysis_out",
     read_length: Annotated[
-        int, Field(ge=1, le=1000, description="Sets STAR sjdbOverhang (read_length - 1).")
+        int, Field(ge=1, le=1000, description="Read-length metadata passed to the alignment hook.")
     ] = 100,
     strand: Annotated[
-        int, Field(ge=0, le=2, description="featureCounts -s for the UMI reads (protocol uses 1).")
+        int, Field(ge=0, le=2, description="Strandedness convention passed to the counting hook.")
     ] = 1,
-    leiden_resolution: Annotated[
-        float, Field(gt=0, description="scanpy Leiden clustering resolution.")
+    cluster_resolution: Annotated[
+        float,
+        Field(gt=0, description="Resolution metadata passed to the downstream-analysis hook."),
     ] = 1.0,
 ) -> schemas.AnalysisPipelineResult:
-    """Generate the fastq-to-analysis pipeline for FLASH-seq UMI single-cell RNA-seq
-    (protocol section 12). Writes two files into out_dir: flashseq_pipeline.sh (bcl to
-    counts: bcl2fastq, umi_tools extract with the CTAAC spacer and 8 bp UMI, STAR,
-    samtools -F 260, featureCounts, umi_tools count) and flashseq_analysis.py (counts to
-    clusters with scanpy: QC, normalize, HVG, PCA, Leiden, UMAP, marker genes). The
-    external tools (bcl2fastq, umi_tools, STAR, samtools, featureCounts, scanpy) are not
-    bundled; the shell pipeline preflights for them. RESEARCH USE ONLY."""
+    """Generate a kit- and tool-agnostic single-cell RNA-seq workflow.
+
+    Writes scrnaseq_pipeline.sh with executable hooks for optional
+    demultiplexing, UMI preprocessing, alignment, and counting, plus
+    scrnaseq_analysis.py as a neutral downstream-analysis hook dispatcher.
+    Hook implementations are not bundled. RESEARCH USE ONLY.
+    """
     return cast(
         schemas.AnalysisPipelineResult,
         generate_analysis(
             out_dir,
             read_length=read_length,
             strand=strand,
-            leiden_resolution=leiden_resolution,
+            cluster_resolution=cluster_resolution,
         ),
     )
 
 
 @mcp.tool(
-    name="plr_run_targeted_pcr_round1",
+    name="plr_run_pcr_enrichment_round1",
     annotations=ToolAnnotations(
-        title="Run targeted PCR round 1 (validated)",
+        title="Run PCR enrichment round 1 (validated)",
         readOnlyHint=False,
         destructiveHint=True,
         idempotentHint=False,
         openWorldHint=True,
     ),
 )
-async def run_targeted_pcr_round1(
+async def run_pcr_enrichment_round1(
     backend: Annotated[
         Literal["chatterbox", "star"],
         Field(description="chatterbox dry-runs with no hardware; star drives the real STAR."),
     ] = "chatterbox",
     mode: Annotated[
         Literal["deck", "pcr1-mm"],
-        Field(description="deck assigns the deck only; pcr1-mm runs the 22.5 uL x8 transfer."),
+        Field(
+            description="deck assigns the deck only; pcr1-mm runs the operator-owned "
+            "external transfer."
+        ),
     ] = "deck",
     return_tips: Annotated[
         bool,
@@ -486,21 +490,22 @@ async def run_targeted_pcr_round1(
             "liquid (human-gated)."
         ),
     ] = False,
-) -> schemas.TargetedPcrRound1Result:
-    """Run the operator's validated targeted PCR round 1 master-mix protocol (starlab
+) -> schemas.PcrEnrichmentRound1Result:
+    """Run the operator's validated PCR enrichment round 1 master-mix protocol (starlab
     script 01). This does NOT reimplement the protocol; it imports the real
-    script and runs its own functions, so the tuned geometry and volumes are the
-    bench values.
+    script and runs its own functions. Liquid volumes, channel usage, geometry,
+    and safety behavior remain operator-owned in that external run card. The
+    wrapper fails closed if its transfer contract is incomplete.
 
     backend: 'chatterbox' dry-runs with no hardware; 'star' drives the real
     liquid handler and requires confirm=True (human-gated: it homes the arm and
     moves liquid). mode: 'deck' assigns the deck only; 'pcr1-mm' runs the
-    22.5 uL x8 master-mix transfer. return_tips True is observation only; False
+    external run card's transfer. return_tips True is observation only; False
     discards (production). Set PLR_MCP_STARLAB_DIR to the starlab_live checkout
     (on starpi, the on-Pi path)."""
     return cast(
-        schemas.TargetedPcrRound1Result,
-        await _run_targeted_pcr_round1(
+        schemas.PcrEnrichmentRound1Result,
+        await _run_pcr_enrichment_round1(
             backend=backend,
             mode=mode,
             return_tips=return_tips,

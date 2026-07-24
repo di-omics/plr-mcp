@@ -2,8 +2,9 @@
 
 These wrappers do NOT reimplement any protocol. They import the operator's
 existing, hardware-validated scripts (from the plr-tested starlab_live tree) and
-call the script's own protocol functions under a selectable backend, preserving
-its tuned geometry, volumes, tip logic, and safety behavior.
+call the script's own protocol functions under a selectable backend. Biological
+parameters remain operator-owned in that external run card; this package does
+not bundle or infer them.
 
 Point PLR_MCP_STARLAB_DIR at the starlab_live directory. On starpi that is the
 on-Pi plr-tested checkout, where a 'star' backend drives the real instrument.
@@ -18,15 +19,15 @@ from typing import Any
 # Default location of the validated scripts; override with PLR_MCP_STARLAB_DIR.
 _DEFAULT_STARLAB_DIR = os.path.expanduser("~/Downloads/plr-tested/liquid-handler/starlab_live")
 
-TARGETED_PCR_ROUND1_SCRIPT = "01_targeted_pcr_round1_mastermix_col1.py"
+PCR_ENRICHMENT_ROUND1_SCRIPT = "01_pcr_enrichment_round1_mastermix_col1.py"
 
 
 def starlab_dir() -> str:
     return os.environ.get("PLR_MCP_STARLAB_DIR", _DEFAULT_STARLAB_DIR)
 
 
-def targeted_pcr_round1_script_path() -> str:
-    return os.path.join(starlab_dir(), TARGETED_PCR_ROUND1_SCRIPT)
+def pcr_enrichment_round1_script_path() -> str:
+    return os.path.join(starlab_dir(), PCR_ENRICHMENT_ROUND1_SCRIPT)
 
 
 def _load_script(filename: str) -> Any:
@@ -36,7 +37,7 @@ def _load_script(filename: str) -> Any:
             f"validated script not found at {path}. Set PLR_MCP_STARLAB_DIR to your "
             "plr-tested starlab_live directory (on starpi, the on-Pi checkout)."
         )
-    spec = importlib.util.spec_from_file_location("starlab_targeted_pcr_round1", path)
+    spec = importlib.util.spec_from_file_location("starlab_pcr_enrichment_round1", path)
     if spec is None or spec.loader is None:
         raise ImportError(f"could not load a module spec for {path}")
     mod = importlib.util.module_from_spec(spec)
@@ -44,21 +45,37 @@ def _load_script(filename: str) -> Any:
     return mod
 
 
-async def run_targeted_pcr_round1(
+def _validated_transfer_contract(mod: Any) -> tuple[Any, float]:
+    """Return the operator-owned transfer callable and its declared volume.
+
+    Validate the external run card before any liquid handler is initialized.
+    This keeps the wrapper fail-closed without copying biological parameters
+    into MCP metadata or repository-owned defaults.
+    """
+    transfer = getattr(mod, "transfer_pcr1_master_mix", None)
+    volume_ul = getattr(mod, "VOL_PCR1_MASTER_MIX", None)
+    if not callable(transfer):
+        raise ValueError("external run card must define a callable transfer_pcr1_master_mix")
+    if isinstance(volume_ul, bool) or not isinstance(volume_ul, (int, float)) or volume_ul <= 0:
+        raise ValueError("external run card must supply a positive VOL_PCR1_MASTER_MIX")
+    return transfer, float(volume_ul)
+
+
+async def run_pcr_enrichment_round1(
     backend: str = "chatterbox",
     mode: str = "deck",
     return_tips: bool = False,
     tip_col: int = 1,
     confirm: bool = False,
 ) -> dict:
-    """Run the validated targeted PCR round 1 master-mix script (starlab script 01).
+    """Run the validated PCR enrichment round 1 master-mix script (starlab script 01).
 
     Imports the real script and calls its assign_deck / transfer_pcr1_master_mix
-    functions unchanged, so the tuned geometry and volumes are exactly the bench
-    values.
+    functions unchanged. Transfer parameters and geometry come only from the
+    operator-owned external run card and are validated before hardware setup.
 
     backend: 'chatterbox' (dry-run, no hardware) or 'star' (real liquid handler).
-    mode: 'deck' (assign the deck only) or 'pcr1-mm' (the 22.5 uL x8 transfer).
+    mode: 'deck' (assign the deck only) or 'pcr1-mm' (run the external transfer).
     return_tips: True returns tips (observation only); False discards (production).
     confirm: must be True for the star backend, since a real run homes the arm
       and moves liquid (human-gated).
@@ -82,7 +99,11 @@ async def run_targeted_pcr_round1(
             ],
         }
 
-    mod = _load_script(TARGETED_PCR_ROUND1_SCRIPT)
+    mod = _load_script(PCR_ENRICHMENT_ROUND1_SCRIPT)
+    transfer: Any = None
+    volume_ul = getattr(mod, "VOL_PCR1_MASTER_MIX", None)
+    if mode == "pcr1-mm":
+        transfer, volume_ul = _validated_transfer_contract(mod)
 
     from pylabrobot.liquid_handling import LiquidHandler
     from pylabrobot.resources.hamilton import STARDeck
@@ -103,7 +124,7 @@ async def run_targeted_pcr_round1(
         r = await mod.assign_deck(lh)
         executed.append("assign_deck")
         if mode == "pcr1-mm":
-            await mod.transfer_pcr1_master_mix(lh, r, discard_tips=not return_tips, tip_col=tip_col)
+            await transfer(lh, r, discard_tips=not return_tips, tip_col=tip_col)
             executed.append("transfer_pcr1_master_mix")
     finally:
         if backend == "star":
@@ -118,15 +139,15 @@ async def run_targeted_pcr_round1(
 
     return {
         "ok": True,
-        "protocol": "targeted_pcr_round1_mastermix_col1",
-        "script": TARGETED_PCR_ROUND1_SCRIPT,
+        "protocol": "pcr_enrichment_round1_mastermix_col1",
+        "script": PCR_ENRICHMENT_ROUND1_SCRIPT,
         "backend": backend,
         "simulated": backend == "chatterbox",
         "mode": mode,
-        "volume_ul": getattr(mod, "VOL_PCR1_MASTER_MIX", None),
+        "volume_ul": volume_ul,
         "tips": "returned" if return_tips else "discarded",
         "tip_col": tip_col,
         "executed": executed,
-        "source": "rail35 pos1 col1",
-        "destination": "rail35 pos0 col1",
+        "source": "operator-defined by external run card",
+        "destination": "operator-defined by external run card",
     }

@@ -156,12 +156,14 @@ class AnalysisPipelineResult(TypedDict, total=False):
     analysis_py: Optional[str]
     method: Optional[str]
     steps: Optional[List[str]]
+    required_hooks: Optional[List[str]]
+    optional_hooks: Optional[List[str]]
     external_tools: Optional[List[str]]
     note: Optional[str]
 
 
-class TargetedPcrRound1Result(TypedDict, total=False):
-    """run_targeted_pcr_round1: validated starlab PCR1 master-mix run."""
+class PcrEnrichmentRound1Result(TypedDict, total=False):
+    """run_pcr_enrichment_round1: validated starlab PCR1 master-mix run."""
 
     ok: Optional[bool]
     protocol: Optional[str]

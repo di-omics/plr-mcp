@@ -66,8 +66,8 @@ server is loaded next to others.
 | `plr_read_plate`    | Read absorbance, fluorescence, or luminescence. |
 | `plr_thermocycler`  | Set block or lid temperature, open or close the lid, deactivate, status. |
 | `plr_heater_shaker` | Set temperature, shake, stop, deactivate, status. |
-| `plr_generate_analysis_pipeline` | Generate the fastq-to-analysis pipeline for FLASH-seq UMI scRNA-seq: a shell pipeline from bcl to a UMI count matrix (bcl2fastq, umi_tools, STAR, samtools, featureCounts), plus a scanpy script from counts to clusters. External tools are not bundled. |
-| `plr_run_targeted_pcr_round1` | Run a validated targeted PCR round 1 master-mix protocol by importing and executing the operator's existing starlab script (not a reimplementation). `chatterbox` dry-runs; `star` requires `confirm=true` (human-gated). See below. |
+| `plr_generate_analysis_pipeline` | Generate a tool-agnostic, UMI-aware single-cell RNA-seq workflow with runtime-configured hooks for optional demultiplexing, UMI preprocessing, alignment, counting, and downstream analysis. Hook implementations are not bundled. |
+| `plr_run_pcr_enrichment_round1` | Run a validated PCR enrichment round 1 master-mix protocol by importing and executing the operator's existing starlab script (not a reimplementation). `chatterbox` dry-runs; `star` requires `confirm=true` (human-gated). See below. |
 
 Well ranges use PyLabRobot syntax: a single well `A1`, a column `A1:H1`, or a
 partial column `A1:D1`.
@@ -81,7 +81,7 @@ safely:
   `destructiveHint`, `idempotentHint`, `openWorldHint`). Probes like
   `plr_connect_check`, `plr_deck_state`, and `plr_read_plate` are read-only;
   `plr_setup_deck` (with `home`), the liquid-handling tools, `plr_thermocycler`,
-  `plr_heater_shaker`, and `plr_run_targeted_pcr_round1` are marked destructive, so a
+  `plr_heater_shaker`, and `plr_run_pcr_enrichment_round1` are marked destructive, so a
   client can warn before anything moves on real hardware.
 - **`simulated` flag.** Every result includes `simulated`. `true` means the
   numbers came from a chatterbox backend with no instrument attached; never read
@@ -170,10 +170,11 @@ validate on your deck before trusting a run.
 
 ## Running a validated protocol
 
-`run_targeted_pcr_round1` does not reimplement a protocol. It imports an existing,
-hardware-validated starlab script and calls its own functions, so the tuned
-geometry, volumes, and tip logic are exactly the bench values. Point it at the
-scripts:
+`run_pcr_enrichment_round1` does not reimplement a protocol. It imports an existing,
+hardware-validated starlab script and calls its own functions. Liquid parameters,
+geometry, and tip logic remain operator-owned in that external run card; the MCP
+wrapper does not bundle them and fails closed when the transfer contract is
+incomplete. Point it at the scripts:
 
 ```bash
 export PLR_MCP_STARLAB_DIR=/path/to/plr-tested/liquid-handler/starlab_live
@@ -193,8 +194,8 @@ plr_mcp/
   lab.py       stateful PyLabRobot wrapper (all the real calls live here)
   server.py    FastMCP server, one thin tool per Lab method
   schemas.py   TypedDict result shapes (the tools' output schemas)
-  protocols.py validated starlab protocol wrappers (run_targeted_pcr_round1)
-  analysis.py  FLASH-seq UMI pipeline generator
+  protocols.py validated starlab protocol wrappers (run_pcr_enrichment_round1)
+  analysis.py  single-cell RNA-seq pipeline generator
 tests/
   test_lab.py  pytest suite, runs on chatterbox (no hardware)
 examples/
