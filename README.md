@@ -14,7 +14,8 @@ the whole thing on a laptop. Point it at real hardware by setting one
 environment variable (see below). Nothing in this repo has been run on a
 physical STAR; see the [hardware bring-up guide](docs/hardware-bringup.md).
 
-Verified against PyLabRobot 0.2.1.
+Verified against PyLabRobot 0.2.1; CI installs the newest 0.2.x release that
+`pyproject.toml` allows (`pylabrobot>=0.2.1,<0.3`).
 
 ## Why an MCP server (and not just tool-use)
 
@@ -82,7 +83,7 @@ safely:
 - **Annotations.** Each tool advertises MCP hints (`readOnlyHint`,
   `destructiveHint`, `idempotentHint`, `openWorldHint`). Probes like
   `plr_connect_check`, `plr_deck_state`, and `plr_read_plate` are read-only;
-  `plr_setup_deck` (with `home`), the liquid-handling tools, `plr_thermocycler`,
+  `plr_setup_deck` (it can home the arm), the liquid-handling tools, `plr_thermocycler`,
   `plr_heater_shaker`, and `plr_run_pcr_enrichment_round1` are marked destructive, so a
   client can warn before anything moves on real hardware.
 - **`simulated` flag.** Every result includes `simulated`. `true` means the
@@ -186,6 +187,14 @@ On a real run, follow the same ladder the scripts require: a clean
 `chatterbox` dry-run, then `mode='deck'` on the instrument (assignment only),
 then the transfer with a person watching. The `star` backend refuses to run
 without `confirm=true`, because a real run homes the arm and moves liquid.
+
+`confirm=true` (on `plr_run_pcr_enrichment_round1`) and `home=true` (on
+`plr_setup_deck`) are tool arguments. They stop a move that nobody asked for,
+but an agent can pass them, so the human gate is the approval prompt in the MCP
+client. Both tools are marked destructive (`destructiveHint`) so the client can
+ask a person first: keep them off the client's always-allow list.
+[`CLAUDE.md`](CLAUDE.md) also tells an agent not to set either argument on the
+operator's behalf.
 
 ## Layout
 
