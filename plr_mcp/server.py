@@ -34,10 +34,14 @@ measurement.
 
 from __future__ import annotations
 
+import io
 import os
+import sys
 from typing import Annotated, Literal, Optional, cast
 
+import anyio
 from mcp.server.fastmcp import FastMCP
+from mcp.server.stdio import stdio_server
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
@@ -515,8 +519,31 @@ async def run_pcr_enrichment_round1(
     )
 
 
+def _protocol_stdout() -> "anyio.AsyncFile[str]":
+    """Keep the process stdout for MCP messages only.
+
+    The chatterbox backends print each action they simulate, and over stdio
+    those prints would land in the protocol stream and break the session. So
+    keep a private copy of file descriptor 1 for the transport, then point
+    descriptor 1 and sys.stdout at stderr: every print and every other write
+    to stdout lands on stderr from here on.
+    """
+    sys.stdout.flush()
+    protocol_fd = os.dup(1)
+    os.dup2(2, 1)
+    sys.stdout = sys.stderr
+    return anyio.wrap_file(io.TextIOWrapper(os.fdopen(protocol_fd, "wb"), encoding="utf-8"))
+
+
+async def _run_stdio(protocol_out: "anyio.AsyncFile[str]") -> None:
+    async with stdio_server(stdout=protocol_out) as (read_stream, write_stream):
+        await mcp._mcp_server.run(
+            read_stream, write_stream, mcp._mcp_server.create_initialization_options()
+        )
+
+
 def main() -> None:
-    mcp.run()
+    anyio.run(_run_stdio, _protocol_stdout())
 
 
 if __name__ == "__main__":

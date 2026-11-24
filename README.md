@@ -51,6 +51,10 @@ plr-mcp                          # stdio transport, chatterbox simulation
 PLR_MCP_BACKEND=star plr-mcp     # target a real liquid handler instead
 ```
 
+Over stdio, the server's stdout carries MCP messages only. PyLabRobot's
+printout (the chatterbox backends print each action they simulate) goes to
+stderr.
+
 ## Tools
 
 Every tool is registered under a `plr_` prefix so it stays unambiguous when this
@@ -209,6 +213,7 @@ plr_mcp/
   analysis.py  single-cell RNA-seq pipeline generator
 tests/
   test_lab.py  pytest suite, runs on chatterbox (no hardware)
+  test_stdio_transport.py  stdio session: 8 transfers, no stray line on stdout
 examples/
   smoke_test.py end-to-end run with no hardware
 evals/
