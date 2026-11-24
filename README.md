@@ -11,7 +11,8 @@ lab-automation steps by calling tools instead of writing PyLabRobot code.
 It ships in **simulation mode** by default. Every tool runs end to end against
 PyLabRobot's chatterbox backends with no instruments attached, so you can try
 the whole thing on a laptop. Point it at real hardware by setting one
-environment variable (see below).
+environment variable (see below). Nothing in this repo has been run on a
+physical STAR; see the [hardware bring-up guide](docs/hardware-bringup.md).
 
 Verified against PyLabRobot 0.2.1.
 
@@ -38,7 +39,8 @@ This pulls in `mcp` and `pylabrobot`.
 python examples/smoke_test.py
 ```
 
-It drives every tool through the chatterbox backends and prints `ALL OK` when
+It drives the deck, liquid-handling, plate-reader, thermocycler and
+heater-shaker tools through the chatterbox backends and prints `ALL OK` when
 the run succeeds.
 
 ## Run the server
@@ -171,10 +173,10 @@ validate on your deck before trusting a run.
 ## Running a validated protocol
 
 `run_pcr_enrichment_round1` does not reimplement a protocol. It imports an existing,
-hardware-validated starlab script and calls its own functions. Liquid parameters,
+hardware-validated starlab script from plr-tested (private) and calls its own functions. Liquid parameters,
 geometry, and tip logic remain operator-owned in that external run card; the MCP
 wrapper does not bundle them and fails closed when the transfer contract is
-incomplete. Point it at the scripts:
+incomplete. Point it at your own copy of the scripts:
 
 ```bash
 export PLR_MCP_STARLAB_DIR=/path/to/plr-tested/liquid-handler/starlab_live
